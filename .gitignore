@@ -7,3 +7,5 @@ patel_data.db
 .pytest_cache/
 .agent/
 .vscode/
+scratch/
+

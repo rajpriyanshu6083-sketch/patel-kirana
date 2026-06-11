@@ -3,3 +3,7 @@
 [2026-06-11] Initialized Ralph Loop configuration.
 - Completed: Codebase mapped and GSD initialized.
 - Current Status: Ready to execute tasks.
+
+[2026-06-11] Completed Task 1: Refactored database helper and persistence functions from app.py into db_utils.py. Exposed thin compatibility wrappers in app.py to preserve test suite execution. Verified all tests pass.
+
+[2026-06-11] Completed Task 2: Modularized email and SMS communication functions from app.py into the new services/ package (email_service.py, sms_service.py). Created delegation wrappers in app.py and verified that the entire test suite passes.
