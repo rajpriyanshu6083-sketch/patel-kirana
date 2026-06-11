@@ -5,7 +5,7 @@ This roadmap covers the technical cleanup, restructuring, and stabilization of t
 
 ## Phases
 
-- [ ] **Phase 1: Backend Refactoring** - Extract database and service components from the monolithic `app.py`.
+- [x] **Phase 1: Backend Refactoring** - Extract database and service components from the monolithic `app.py`.
 - [ ] **Phase 2: Client-side Script Separation** - Extract inline JavaScript from `templates/index.html` into a standalone asset file.
 - [ ] **Phase 3: Test Suite Enhancements** - Implement new test coverages and database isolation verifications.
 
@@ -23,7 +23,7 @@ This roadmap covers the technical cleanup, restructuring, and stabilization of t
 **Plans**: 1 plan
 
 Plans:
-- [ ] 01-01: Modularize database helper functions and external services into separate modules.
+- [x] 01-01: Modularize database helper functions and external services into separate modules.
 
 ---
 
@@ -64,10 +64,10 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Refactoring | 0/1 | Not started | - |
+| 1. Backend Refactoring | 1/1 | Completed | 2026-06-11 |
 | 2. Client Script Separation | 0/1 | Not started | - |
 | 3. Test Suite Enhancements | 0/1 | Not started | - |
 
 ---
 *Roadmap defined: 2026-06-11*
-*Last updated: 2026-06-11 after initial definition*
+*Last updated: 2026-06-11 after completing Phase 1*
