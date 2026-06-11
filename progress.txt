@@ -9,3 +9,5 @@
 [2026-06-11] Completed Task 2: Modularized email and SMS communication functions from app.py into the new services/ package (email_service.py, sms_service.py). Created delegation wrappers in app.py and verified that the entire test suite passes.
 
 [2026-06-11] Completed Task 3: Separated client-side JavaScript out of templates/index.html and placed it in a standalone static/js/app.js file. Updated check.py and check3.py utilities to validate static/js/app.js directly, resolving f-string syntax compatibility issues. Verified all 15 unit/integration tests pass.
+
+[2026-06-11] Completed Task 4: Enhanced the test suite in test_app.py to use addCleanup for robust DB file unlinking and database isolation. Added unit tests for OTP missing credentials checks, registration validation limits, and integrated check.py braces check into pytest. Verified all 18 test cases pass successfully.

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import app as app_module
 from app import app, GMAIL_ADDRESS, GMAIL_PASSWORD
+import db_utils
 
 class PatelKiranaTestCase(unittest.TestCase):
     def setUp(self):
@@ -14,23 +15,31 @@ class PatelKiranaTestCase(unittest.TestCase):
 
         # Isolate DB for tests
         self.original_db_path = app_module.DB_PATH
-        app_module.DB_PATH = Path(__file__).parent / 'patel_data_test.db'
+        self.original_db_utils_path = db_utils.DB_PATH
+        
+        test_db = Path(__file__).parent / 'patel_data_test.db'
+        app_module.DB_PATH = test_db
+        db_utils.DB_PATH = test_db
+
+        # Register cleanup to run under all conditions (success or setUp/test failure)
+        def cleanup():
+            # Restore paths
+            app_module.DB_PATH = self.original_db_path
+            db_utils.DB_PATH = self.original_db_utils_path
+            app_module._reload_orders_from_db()
+
+            # Delete test DB and temporary WAL/SHM files
+            for suffix in ['', '-shm', '-wal']:
+                db_file = Path(str(test_db) + suffix)
+                if db_file.exists():
+                    try:
+                        db_file.unlink()
+                    except Exception:
+                        pass
+        self.addCleanup(cleanup)
+
+        # Initialize the isolated test DB
         app_module._init_db()
-
-    def tearDown(self):
-        # Restore DB and clean up test files
-        test_db = app_module.DB_PATH
-        app_module.DB_PATH = self.original_db_path
-        app_module._reload_orders_from_db()
-
-        # Delete test DB and temporary WAL/SHM files
-        for suffix in ['', '-shm', '-wal']:
-            db_file = Path(str(test_db) + suffix)
-            if db_file.exists():
-                try:
-                    db_file.unlink()
-                except Exception:
-                    pass
 
     def test_home_page(self):
         """Test that the homepage loads successfully"""
@@ -556,6 +565,62 @@ class PatelKiranaTestCase(unittest.TestCase):
                                   data=json.dumps(new_login),
                                   content_type='application/json') as response:
                 self.assertEqual(response.status_code, 200)
+
+    @patch('app.send_email_gmail')
+    def test_send_otp_missing_credentials(self, mock_send_email):
+        """Test send-otp endpoint returns 500 when Gmail credentials are not configured"""
+        with patch('app.GMAIL_ADDRESS', ''), \
+             patch('app.GMAIL_PASSWORD', ''):
+            payload = {
+                "name": "Test User",
+                "email": "test@gmail.com",
+                "phone": "9876543210"
+            }
+            with self.client.post('/api/send-otp',
+                                  data=json.dumps(payload),
+                                  content_type='application/json') as response:
+                self.assertEqual(response.status_code, 500)
+                data = json.loads(response.data)
+                self.assertFalse(data['success'])
+                self.assertIn('Email configuration is missing', data['message'])
+
+    def test_send_otp_register_missing_name_or_email(self):
+        """Test customer registration validation limits (missing name/email)"""
+        # Missing name
+        payload_no_name = {
+            "phone": "9999999999",
+            "email": "test@gmail.com",
+            "action": "register"
+        }
+        with self.client.post('/api/send-otp',
+                              data=json.dumps(payload_no_name),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 400)
+            data = json.loads(response.data)
+            self.assertFalse(data['success'])
+            self.assertIn('Name, email, and phone are required', data['message'])
+
+        # Missing email
+        payload_no_email = {
+            "phone": "9999999999",
+            "name": "Test User",
+            "action": "register"
+        }
+        with self.client.post('/api/send-otp',
+                              data=json.dumps(payload_no_email),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 400)
+            data = json.loads(response.data)
+            self.assertFalse(data['success'])
+            self.assertIn('Name, email, and phone are required', data['message'])
+
+    def test_javascript_braces_balance(self):
+        """Verify that the separated JavaScript file has fully balanced braces"""
+        import subprocess
+        import sys
+        result = subprocess.run([sys.executable, 'check.py'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('Braces are balanced!', result.stdout)
 
 if __name__ == '__main__':
     unittest.main()
