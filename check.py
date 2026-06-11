@@ -1,9 +1,6 @@
 
 import sys
-content = open('templates/index.html', encoding='utf-8').read()
-script_start = content.find('<script>')
-script_end = content.find('</script>')
-script = content[script_start:script_end]
+script = open('static/js/app.js', encoding='utf-8').read()
 
 stack = []
 for i, char in enumerate(script):

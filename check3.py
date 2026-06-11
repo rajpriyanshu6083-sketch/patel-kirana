@@ -1,13 +1,10 @@
 import sys, re
-content = open('templates/index.html', encoding='utf-8').read()
-script_start = content.find('<script>')
-script_end = content.find('</script>')
-script = content[script_start:script_end]
+script = open('static/js/app.js', encoding='utf-8').read()
 script = re.sub(r'//.*', '', script)
 script = re.sub(r'/\*.*?\*/', '', script, flags=re.DOTALL)
 script = re.sub(r'''"(?:\\.|[^\\"])*"''', '', script)
 script = re.sub(r''''(?:\\.|[^\\'])*''', '', script)
-script = re.sub(r'''`(?:\\.|[^\\`])*`"n', '', script)
+script = re.sub(r'''`(?:\\.|[^\\`])*`''', '', script)
 
 stack = []
 for i, char in enumerate(script):
@@ -17,7 +14,7 @@ for i, char in enumerate(script):
         if stack:
             stack.pop()
         else:
-            print(f'Extra } at {i}')
+            print(f'Extra }} at {i}')
 
 if stack:
     print(f'Unclosed {{ count: {len(stack)}')
