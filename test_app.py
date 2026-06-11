@@ -622,6 +622,52 @@ class PatelKiranaTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn('Braces are balanced!', result.stdout)
 
+    def test_inventory_overrides_flow(self):
+        """Test GET /api/inventory/overrides and POST /api/owner/update-inventory flow"""
+        # 1. Fetch initial overrides (should be empty list)
+        with self.client.get('/api/inventory/overrides') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertEqual(data['overrides'], [])
+
+        # 2. Post a new override (mark product 1 out of stock)
+        payload = {
+            "product_id": 1,
+            "in_stock": 0,
+            "price": 25.0
+        }
+        with self.client.post('/api/owner/update-inventory',
+                                    data=json.dumps(payload),
+                                    content_type='application/json') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertEqual(data['message'], 'Inventory override saved successfully')
+
+        # 3. Fetch overrides again (should contain the updated record)
+        with self.client.get('/api/inventory/overrides') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertEqual(len(data['overrides']), 1)
+            override = data['overrides'][0]
+            self.assertEqual(override['product_id'], 1)
+            self.assertEqual(override['in_stock'], 0)
+            self.assertEqual(override['price'], 25.0)
+
+        # 4. Try posting with missing parameters (should return 400)
+        bad_payload = {
+            "product_id": 2
+        }
+        with self.client.post('/api/owner/update-inventory',
+                                    data=json.dumps(bad_payload),
+                                    content_type='application/json') as response:
+            self.assertEqual(response.status_code, 400)
+            data = json.loads(response.data)
+            self.assertFalse(data['success'])
+            self.assertIn('required', data['message'])
+
 if __name__ == '__main__':
     unittest.main()
 

@@ -147,31 +147,65 @@
 
         // Try to restore previous session immediately
         function _restoreSession() {
-            if (!_loadState()) return;
-            // We have a saved session — skip the login screen
-            document.getElementById('login-container').classList.add('hidden');
-            setTimeout(() => {
-                document.getElementById('login-container').style.display = 'none';
-            }, 500);
-            if (isOwner) {
-                document.getElementById('app-container').style.display = 'none';
-                document.getElementById('ow-greeting').innerText = `Good day, ${currentUser} \ud83d\udc4b`;
-                document.getElementById('owner-shell').classList.add('active');
-                document.getElementById('ow-prod-count').innerText =
-                    `${inventory.length} products in catalogue`;
-                setTimeout(() => switchOwnerTab('orders'), 50);
-            } else {
-                document.getElementById('owner-shell').classList.remove('active');
-                document.getElementById('app-container').style.display = 'block';
-                document.getElementById('sidebar-name').innerText = userProfile.name;
-                document.getElementById('sidebar-contact').innerText = userProfile.contact;
-                document.getElementById('owner-toggle-btn').style.display = 'none';
-                document.getElementById('header-cart-icon').style.display = 'block';
+            const hasSession = _loadState();
+
+            fetch('/api/inventory/overrides')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.overrides) {
+                        data.overrides.forEach(override => {
+                            const product = inventory.find(p => p.id == override.product_id);
+                            if (product) {
+                                product.inStock = override.in_stock === 1;
+                                if (override.price !== null) {
+                                    product.price = override.price;
+                                }
+                            }
+                        });
+                        // If product is out of stock, clean it from cart
+                        data.overrides.forEach(override => {
+                            if (override.in_stock === 0 && cart[override.product_id]) {
+                                delete cart[override.product_id];
+                            }
+                        });
+                        if (hasSession) {
+                            _saveState();
+                        }
+                    }
+                    continueRestore(hasSession);
+                })
+                .catch(err => {
+                    console.error("Error fetching inventory overrides:", err);
+                    continueRestore(hasSession);
+                });
+
+            function continueRestore(hasSession) {
+                if (!hasSession) return;
+                // We have a saved session — skip the login screen
+                document.getElementById('login-container').classList.add('hidden');
                 setTimeout(() => {
-                    filterProducts();
-                    updateCartCount();
-                    updateCustomerDashboard();
-                }, 50);
+                    document.getElementById('login-container').style.display = 'none';
+                }, 500);
+                if (isOwner) {
+                    document.getElementById('app-container').style.display = 'none';
+                    document.getElementById('ow-greeting').innerText = `Good day, ${currentUser} \ud83d\udc4b`;
+                    document.getElementById('owner-shell').classList.add('active');
+                    document.getElementById('ow-prod-count').innerText =
+                        `${inventory.length} products in catalogue`;
+                    setTimeout(() => switchOwnerTab('orders'), 50);
+                } else {
+                    document.getElementById('owner-shell').classList.remove('active');
+                    document.getElementById('app-container').style.display = 'block';
+                    document.getElementById('sidebar-name').innerText = userProfile.name;
+                    document.getElementById('sidebar-contact').innerText = userProfile.contact;
+                    document.getElementById('owner-toggle-btn').style.display = 'none';
+                    document.getElementById('header-cart-icon').style.display = 'block';
+                    setTimeout(() => {
+                        filterProducts();
+                        updateCartCount();
+                        updateCustomerDashboard();
+                    }, 50);
+                }
             }
         }
 
@@ -1312,6 +1346,17 @@
                 prod.inStock = false;
                 const st = document.getElementById('ow-stock-' + id);
                 if (st) { st.className = 'stock-toggle out'; st.innerText = '● Out of Stock'; }
+                
+                // Post stock update to server overrides table
+                fetch('/api/owner/update-inventory', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: prod.id,
+                        in_stock: 0,
+                        price: prod.price
+                    })
+                }).catch(err => console.error("Error updating stock status on server:", err));
             }
         }
 
@@ -1326,6 +1371,17 @@
             if (btn) { btn.className = 'stock-toggle ' + (prod.inStock ? 'in' : 'out'); btn.innerText = prod.inStock ? '● In Stock' : '● Out of Stock'; }
             if (qtyEl) qtyEl.innerText = prod.qty;
             filterProducts(); // update storefront live
+
+            // Post stock update to server overrides table
+            fetch('/api/owner/update-inventory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_id: prod.id,
+                    in_stock: prod.inStock ? 1 : 0,
+                    price: prod.price
+                })
+            }).catch(err => console.error("Error updating stock status on server:", err));
         }
 
         function deleteProduct(id) {
@@ -1569,7 +1625,9 @@
                 return;
             }
 
+            let finalId;
             if (id) {
+                finalId = parseInt(id);
                 const p = inventory.find(i => i.id == id);
                 p.name = name;
                 p.category = category;
@@ -1583,9 +1641,9 @@
                     delete cart[id];
                 }
             } else {
-                const newId = Date.now();
+                finalId = Date.now();
                 inventory.unshift({
-                    id: newId,
+                    id: finalId,
                     name: name,
                     category: category,
                     price: price,
@@ -1595,6 +1653,17 @@
                     inStock: inStock
                 });
             }
+
+            // Post inventory stock status update to the server overrides table
+            fetch('/api/owner/update-inventory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_id: finalId,
+                    in_stock: inStock ? 1 : 0,
+                    price: price
+                })
+            }).catch(err => console.error("Error updating inventory override on server:", err));
 
             closeAdminModal();
             renderAdminDashboard();

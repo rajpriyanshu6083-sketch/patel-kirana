@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Gmail SMTP Configuration
 import services
+import db_utils
 
 GMAIL_ADDRESS = os.environ.get('GMAIL_ADDRESS')
 GMAIL_PASSWORD = os.environ.get('GMAIL_PASSWORD')
@@ -767,6 +768,36 @@ def api_clear_old_orders():
         _delete_order(oid)
     return jsonify({'success': True, 'deleted': len(to_delete),
                     'message': f'Removed {len(to_delete)} orders older than {days} days.'})
+
+
+@app.route('/api/inventory/overrides', methods=['GET'])
+def api_inventory_overrides():
+    """Return list of all inventory stock/price overrides."""
+    try:
+        overrides = db_utils.load_inventory_overrides()
+        return jsonify({'success': True, 'overrides': overrides})
+    except Exception as e:
+        logger.error(f"Error loading inventory overrides: {e}")
+        return jsonify({'success': False, 'message': 'Database error'}), 500
+
+
+@app.route('/api/owner/update-inventory', methods=['POST'])
+def api_owner_update_inventory():
+    """Create or update a product's stock status or price override."""
+    data = request.get_json() or {}
+    product_id = data.get('product_id')
+    in_stock = data.get('in_stock')  # 0 or 1
+    price = data.get('price')  # Optional float
+
+    if product_id is None or in_stock is None:
+        return jsonify({'success': False, 'message': 'product_id and in_stock are required'}), 400
+
+    try:
+        db_utils.save_inventory_override(int(product_id), int(in_stock), float(price) if price is not None else None)
+        return jsonify({'success': True, 'message': 'Inventory override saved successfully'})
+    except Exception as e:
+        logger.error(f"Error saving inventory override: {e}")
+        return jsonify({'success': False, 'message': 'Database error'}), 500
 
 
 if __name__ == '__main__':

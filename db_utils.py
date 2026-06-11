@@ -122,3 +122,21 @@ def load_customer(phone: str):
         'addresses': json.loads(row[2] or '[]'),
         'khata_bal': row[3] or 0
     }
+
+def save_inventory_override(product_id: int, in_stock: int, price: float = None):
+    """Upsert stock status and price override details for a product."""
+    with get_db() as conn:
+        conn.execute(
+            '''INSERT INTO inventory_overrides (product_id, in_stock, price, updated_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(product_id) DO UPDATE SET
+                   in_stock=excluded.in_stock, price=excluded.price, updated_at=excluded.updated_at''',
+            (product_id, in_stock, price, time.time())
+        )
+        conn.commit()
+
+def load_inventory_overrides() -> list:
+    """Return list of all inventory overrides."""
+    with get_db() as conn:
+        rows = conn.execute('SELECT product_id, in_stock, price FROM inventory_overrides').fetchall()
+    return [{'product_id': r[0], 'in_stock': r[1], 'price': r[2]} for r in rows]
