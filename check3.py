@@ -3,7 +3,7 @@ script = open('static/js/app.js', encoding='utf-8').read()
 script = re.sub(r'//.*', '', script)
 script = re.sub(r'/\*.*?\*/', '', script, flags=re.DOTALL)
 script = re.sub(r'''"(?:\\.|[^\\"])*"''', '', script)
-script = re.sub(r''''(?:\\.|[^\\'])*''', '', script)
+script = re.sub(r"'(?:\\.|[^\\'])*'", '', script)
 script = re.sub(r'''`(?:\\.|[^\\`])*`''', '', script)
 
 stack = []
