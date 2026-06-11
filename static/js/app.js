@@ -1043,21 +1043,30 @@
             isOwner = false;
             currentlyInAdminView = false;
 
-            document.getElementById('cart-count').innerText = 0;
+            const cartCount = document.getElementById('cart-count');
+            if (cartCount) cartCount.innerText = 0;
 
             // Clear all localStorage keys
             localStorage.removeItem('patel_groceries_session');
             localStorage.removeItem(_LS_KEY);
 
             // Close any open sidebars/modals
-            try { if (document.getElementById('sidebar').classList.contains('open')) toggleSidebar(); } catch (e) { }
+            try { 
+                const sidebar = document.getElementById('sidebar');
+                if (sidebar && sidebar.classList.contains('open')) toggleSidebar(); 
+            } catch (e) { }
             try { closeModal(); } catch (e) { }
             try { closeAdminModal(); } catch (e) { }
 
             // Hide everything, show login
-            document.getElementById('app-container').style.display = 'none';
-            document.getElementById('owner-shell').classList.remove('active');
-            document.getElementById('login-container').style.display = 'flex';
+            const appContainer = document.getElementById('app-container');
+            if (appContainer) appContainer.style.display = 'none';
+            
+            const ownerShell = document.getElementById('owner-shell');
+            if (ownerShell) ownerShell.classList.remove('active');
+            
+            const loginContainer = document.getElementById('login-container');
+            if (loginContainer) loginContainer.style.display = 'flex';
 
             // Reset login form fields
             ['login-name', 'login-email', 'login-phone', 'login-otp',
@@ -1065,13 +1074,41 @@
                     const el = document.getElementById(id);
                     if (el) el.value = '';
                 });
-            document.getElementById('lookup-status').style.display = 'none';
-            document.getElementById('lookup-status').innerHTML = '';
-            document.getElementById('new-customer-fields').style.display = 'none';
-            document.getElementById('btn-send-otp').style.display = 'block';
-            document.getElementById('customer-dashboard-widget').style.display = 'none';
-            document.getElementById('otp-section').style.display = 'none';
-            document.getElementById('otp-instruction').innerText = '';
+                
+            const lookupStatus = document.getElementById('lookup-status');
+            if (lookupStatus) {
+                lookupStatus.style.display = 'none';
+                lookupStatus.innerHTML = '';
+            }
+            
+            // Reset customer mode to login
+            customerMode = 'login';
+            const nameField = document.getElementById('customer-register-fields-name');
+            const emailField = document.getElementById('customer-register-fields-email');
+            if (nameField) nameField.style.display = 'none';
+            if (emailField) emailField.style.display = 'none';
+            
+            const title = document.getElementById('customer-mode-title');
+            if (title) title.innerText = 'Customer Login';
+            
+            const toggleBtn = document.getElementById('customer-toggle-mode');
+            if (toggleBtn) toggleBtn.innerText = 'New here? Create an account';
+            
+            const actionBtn = document.getElementById('btn-send-otp');
+            if (actionBtn) {
+                actionBtn.innerText = 'Send OTP';
+                actionBtn.style.display = 'block';
+            }
+
+            const dashboardWidget = document.getElementById('customer-dashboard-widget');
+            if (dashboardWidget) dashboardWidget.style.display = 'none';
+            
+            const otpSection = document.getElementById('otp-section');
+            if (otpSection) otpSection.style.display = 'none';
+            
+            const otpInstruction = document.getElementById('otp-instruction');
+            if (otpInstruction) otpInstruction.innerText = '';
+            
             switchLoginTab('customer');
             filterProducts();
         }
