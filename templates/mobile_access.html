@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📱 Mobile Access — Patel Groceries</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- QR Code library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { height: 100%; overflow-y: auto; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            min-height: 100vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 20px;
+            color: white;
+        }
+        .container {
+            max-width: 480px;
+            width: 100%;
+            margin: 0 auto;
+            text-align: center;
+            padding-bottom: 20px;
+        }
+        /* Header */
+        .logo-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .logo-row img {
+            width: 48px; height: 48px;
+            border-radius: 12px;
+            object-fit: contain;
+        }
+        h1 { font-size: 1.6rem; font-weight: 900; }
+        .subtitle { font-size: 0.9rem; color: #94a3b8; margin-bottom: 32px; }
+
+        /* QR Card */
+        .qr-card {
+            background: white;
+            border-radius: 24px;
+            padding: 28px;
+            margin-bottom: 20px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden;
+        }
+        .qr-card::before {
+            content: '';
+            position: absolute;
+            top: -30px; right: -30px;
+            width: 120px; height: 120px;
+            background: radial-gradient(circle, rgba(22,163,74,0.15) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+        .qr-label {
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: #16a34a;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+        #qrcode {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        #qrcode canvas, #qrcode img {
+            border-radius: 12px;
+            border: 4px solid #f0fdf4;
+        }
+        .url-box {
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border: 2px solid transparent;
+        }
+        .url-box:hover { background: #e2e8f0; border-color: #16a34a; }
+        .url-box span {
+            flex: 1;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #0f172a;
+            text-align: left;
+            word-break: break-all;
+        }
+        .copy-icon { color: #16a34a; font-size: 1.1rem; flex-shrink: 0; }
+        .copy-feedback {
+            font-size: 0.78rem;
+            color: #16a34a;
+            font-weight: 700;
+            margin-top: 8px;
+            height: 18px;
+            transition: opacity 0.3s;
+        }
+
+        /* Info Cards */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .info-card {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            padding: 14px;
+            text-align: left;
+        }
+        .info-card i { font-size: 1.2rem; color: #4ade80; margin-bottom: 6px; display: block; }
+        .info-card .label { font-size: 0.7rem; color: #94a3b8; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+        .info-card .value { font-size: 0.9rem; font-weight: 800; margin-top: 2px; }
+
+        /* Steps */
+        .steps-card {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        .steps-title {
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: #94a3b8;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+        .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .step-num {
+            width: 26px; height: 26px;
+            border-radius: 50%;
+            background: #16a34a;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 800;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .step-text { font-size: 0.88rem; color: #cbd5e1; line-height: 1.4; }
+        .step-text strong { color: white; }
+
+        /* Firewall tip */
+        .firewall-tip {
+            background: rgba(245,158,11,0.12);
+            border: 1px solid rgba(245,158,11,0.3);
+            border-radius: 12px;
+            padding: 14px;
+            font-size: 0.82rem;
+            color: #fcd34d;
+            line-height: 1.5;
+            text-align: left;
+        }
+        .firewall-tip code {
+            display: block;
+            background: rgba(0,0,0,0.3);
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-top: 8px;
+            font-size: 0.78rem;
+            word-break: break-all;
+            color: #86efac;
+        }
+
+        /* Go button */
+        .go-btn {
+            display: block;
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            color: white;
+            text-decoration: none;
+            border-radius: 14px;
+            padding: 16px;
+            font-size: 1rem;
+            font-weight: 800;
+            margin-top: 16px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 6px 20px rgba(22,163,74,0.4);
+            transition: transform 0.1s;
+        }
+        .go-btn:hover { transform: translateY(-2px); }
+        .footer { font-size: 0.75rem; color: #475569; margin-top: 24px; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <div class="logo-row">
+        <img src="/static/logo.png" alt="logo" onerror="this.style.display='none'">
+        <h1>Patel Groceries</h1>
+    </div>
+    <div class="subtitle">📱 Scan QR or type the address in your mobile browser</div>
+
+    <!-- QR Card -->
+    <div class="qr-card">
+        <div class="qr-label">📡 Scan with phone camera</div>
+        <div id="qrcode"></div>
+        <div class="url-box" onclick="copyURL()" title="Click to copy">
+            <span id="url-display">Loading...</span>
+            <i class="fa-solid fa-copy copy-icon"></i>
+        </div>
+        <div class="copy-feedback" id="copy-msg"></div>
+    </div>
+
+    <!-- Info -->
+    <div class="info-grid">
+        <div class="info-card">
+            <i class="fa-solid fa-network-wired"></i>
+            <div class="label">Your LAN IP</div>
+            <div class="value" id="show-ip">—</div>
+        </div>
+        <div class="info-card">
+            <i class="fa-solid fa-plug"></i>
+            <div class="label">Port</div>
+            <div class="value">5000</div>
+        </div>
+        <div class="info-card">
+            <i class="fa-solid fa-wifi"></i>
+            <div class="label">Network</div>
+            <div class="value">Same Wi-Fi needed</div>
+        </div>
+        <div class="info-card">
+            <i class="fa-solid fa-shield-halved"></i>
+            <div class="label">Protocol</div>
+            <div class="value">HTTP (local)</div>
+        </div>
+    </div>
+
+    <!-- Steps -->
+    <div class="steps-card">
+        <div class="steps-title">How to open on mobile</div>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">Connect your phone to the <strong>same Wi-Fi</strong> as this PC</div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">Open your phone's <strong>Camera app</strong> and point it at the QR code above</div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">Tap the banner that appears — it will open the app in your browser</div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">Or manually type the address shown above into <strong>Chrome / Safari</strong></div>
+        </div>
+        <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-text">Tap <strong>"Add to Home Screen"</strong> to install it as an app icon (PWA)</div>
+        </div>
+    </div>
+
+    <!-- Firewall tip -->
+    <div class="firewall-tip">
+        <strong>⚠️ Not connecting?</strong> Run this command as Administrator in PowerShell to allow the port through Windows Firewall:
+        <code>netsh advfirewall firewall add rule name="Patel Groceries" dir=in action=allow protocol=TCP localport=5000</code>
+    </div>
+
+    <a href="/" class="go-btn">🖥️ Open on This PC instead</a>
+
+    <div class="footer">Server is running · Waitress WSGI · Patel Groceries &copy; 2026</div>
+</div>
+
+<script>
+    async function init() {
+        let appUrl;
+        let lanIp;
+        try {
+            const res = await fetch('/api/network-info');
+            const data = await res.json();
+            lanIp = data.ip;
+            appUrl = data.url;
+        } catch (e) {
+            // Fallback: use the hostname the page was loaded from
+            lanIp = window.location.hostname;
+            appUrl = `http://${lanIp}:5000/`;
+        }
+
+        document.getElementById('url-display').innerText = appUrl;
+        document.getElementById('show-ip').innerText = lanIp;
+
+        // Generate QR code
+        new QRCode(document.getElementById('qrcode'), {
+            text: appUrl,
+            width: 200,
+            height: 200,
+            colorDark: '#0f172a',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+        });
+
+        window._appUrl = appUrl;
+    }
+    init();
+
+    function copyURL() {
+        const url = window._appUrl || document.getElementById('url-display').innerText;
+        navigator.clipboard.writeText(url).then(() => {
+            showCopied();
+        }).catch(() => {
+            const el = document.createElement('textarea');
+            el.value = url;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            showCopied();
+        });
+    }
+    function showCopied() {
+        const msg = document.getElementById('copy-msg');
+        msg.innerText = '✅ Copied to clipboard!';
+        setTimeout(() => msg.innerText = '', 2200);
+    }
+</script>
+</body>
+</html>

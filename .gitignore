@@ -1,0 +1,9 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+patel_data.db
+.pytest_cache/
+.agent/
+.vscode/

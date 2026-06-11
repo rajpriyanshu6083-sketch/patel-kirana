@@ -1,0 +1,28 @@
+{
+    "name": "Patel Groceries",
+    "short_name": "PatelGroceries",
+    "description": "Fast local grocery delivery with AI-powered shopping support.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#f8fafc",
+    "theme_color": "#16a34a",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "/static/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/static/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "/static/icons/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png"
+        }
+    ]
+}
