@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import json
 import uuid
@@ -10,7 +11,10 @@ from contextlib import contextmanager
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent / 'patel_data.db'
+if os.path.exists('/app/data'):
+    DB_PATH = Path('/app/data/patel_data.db')
+else:
+    DB_PATH = Path(__file__).parent / 'patel_data.db'
 
 @contextmanager
 def get_db():

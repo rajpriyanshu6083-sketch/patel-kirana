@@ -15,6 +15,7 @@
     <meta name="msapplication-TileColor" content="#16a34a">
     <meta name="msapplication-TileImage" content="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
     <title>Patel Groceries | 10-Minute Local Delivery</title>
+    <meta name="description" content="Patel Groceries delivers fresh products and kitchen dinner kits directly to your doorstep in 10 minutes. Access our digital ledger (Khata) and place secure orders.">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- REAL AI INTEGRATION: Tesseract.js for reading text from images -->
@@ -23,6 +24,7 @@
     <!-- Leaflet.js — Free maps, no API key needed -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -47,8 +49,8 @@
         }
 
         body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
+            background: transparent;
+            color: #f8fafc;
             overflow-x: hidden;
             -webkit-tap-highlight-color: transparent;
         }
@@ -90,6 +92,77 @@
             }
         }
 
+        /* Liquid Glass Background */
+        #liquid-glass-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -2;
+            pointer-events: none;
+            overflow: hidden;
+            background: #090d16;
+            contain: paint;  /* isolate rendering layer — prevents repaints spilling up */
+        }
+
+        .liquid-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);    /* was 100px — lower blur = far less GPU cost */
+            opacity: 0.4;
+            mix-blend-mode: screen;
+            animation: drift 40s infinite alternate ease-in-out;  /* slower = fewer repaints */
+            will-change: transform;
+        }
+
+        .blob-green {
+            top: -10%;
+            left: -10%;
+            width: 55vw;
+            height: 55vw;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.55) 0%, rgba(16, 185, 129, 0) 70%);
+            animation-duration: 40s;
+        }
+
+        .blob-purple {
+            bottom: -10%;
+            right: -10%;
+            width: 65vw;
+            height: 65vw;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.55) 0%, rgba(139, 92, 246, 0) 70%);
+            animation-duration: 50s;
+            animation-delay: -5s;
+        }
+
+        .blob-orange {
+            top: 35%;
+            left: 35%;
+            width: 50vw;
+            height: 50vw;
+            background: radial-gradient(circle, rgba(249, 115, 22, 0.4) 0%, rgba(249, 115, 22, 0) 70%);
+            animation-duration: 44s;
+            animation-delay: -12s;
+        }
+
+        .blob-blue {
+            bottom: 25%;
+            left: -15%;
+            width: 60vw;
+            height: 60vw;
+            background: radial-gradient(circle, rgba(14, 165, 233, 0.4) 0%, rgba(14, 165, 233, 0) 70%);
+            animation-duration: 55s;
+            animation-delay: -8s;
+        }
+
+        /* Removed rotate() — rotation causes full layer recomposition on every frame */
+        @keyframes drift {
+            0%   { transform: translate(0, 0) scale(1); }
+            33%  { transform: translate(8vw, 12vh) scale(1.12); }
+            66%  { transform: translate(-4vw, 8vh) scale(0.92); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+
         /* --- LOGIN SCREEN STYLES --- */
         #login-container {
             position: fixed;
@@ -97,129 +170,270 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+            background: radial-gradient(circle at 50% 50%, rgba(9, 13, 22, 0.15) 0%, rgba(9, 13, 22, 0.85) 100%);
             display: flex;
             justify-content: center;
             align-items: center;
             z-index: 99999;
             padding: 20px;
-            transition: opacity 0.5s ease, visibility 0.5s;
+            overflow: hidden;
+            transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.8s;
+            perspective: 1500px; /* High perspective for 3D card tilt */
+        }
+
+        /* 3D background glowing blobs - adjusted to overlay over 3D particles slightly */
+        .login-glow-ball {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);   /* was 120px — halved for GPU relief */
+            opacity: 0.10;
+            pointer-events: none;
+            z-index: 1;
+            /* Simple opacity pulse instead of translate — no compositor layer required */
+            animation: floatGlowBall 16s ease-in-out infinite;
+        }
+        .login-glow-1 {
+            width: 350px;
+            height: 350px;
+            background: #22c55e;
+            top: -80px;
+            left: -50px;
+        }
+        .login-glow-2 {
+            width: 400px;
+            height: 400px;
+            background: #8b5cf6;
+            bottom: -120px;
+            right: -100px;
+            animation-delay: -8s;
+        }
+        @keyframes floatGlowBall {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(40px, -30px) scale(1.15); }
         }
 
         #login-container.hidden {
             opacity: 0;
+            transform: scale(1.15) translateZ(100px); /* 3D Zoom away transition */
             visibility: hidden;
             pointer-events: none;
         }
 
         .login-card {
-            background: var(--card-bg);
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(30px) saturate(160%);
+            -webkit-backdrop-filter: blur(30px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             width: 100%;
-            max-width: 400px;
-            padding: 30px 20px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            max-width: 410px;
+            padding: 40px 28px;
+            border-radius: 28px;
+            box-shadow: 
+                0 4px 30px rgba(0, 0, 0, 0.4),
+                0 30px 60px rgba(0, 0, 0, 0.6),
+                inset 0 1px 1px rgba(255, 255, 255, 0.1),
+                0 0 60px rgba(34, 197, 94, 0.1);
             text-align: center;
-            animation: loginFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: loginFadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            transform-style: preserve-3d;
+            z-index: 2;
+            transform: rotateX(0deg) rotateY(0deg) translateZ(0);
+            transition: box-shadow 0.5s ease;
+            /* will-change removed: already on compositor layer via perspective parent */
         }
 
         #customer-form,
         #owner-form {
             animation: formFadeIn 0.4s ease-out;
+            transform-style: preserve-3d;
+        }
+
+        /* 3D Floating Logo container */
+        .login-logo-container {
+            display: inline-block;
+            animation: floatLogo3D 8s ease-in-out infinite;  /* was 6s — slower = less GPU work */
+            margin-bottom: 20px;
+            transform-style: preserve-3d;
+            transform: translateZ(50px);
+        }
+
+        .login-logo-img {
+            width: 95px;
+            height: 95px;
+            object-fit: contain;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px;
+            box-shadow: 
+                0 10px 25px rgba(0, 0, 0, 0.3),
+                0 2px 6px rgba(0, 0, 0, 0.2),
+                inset 0 2px 0 rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        @keyframes floatLogo3D {
+            0%, 100% { transform: translateZ(50px) translateY(0); }
+            50%       { transform: translateZ(50px) translateY(-6px); }
         }
 
         .login-logo {
-            font-size: 2rem;
-            color: var(--primary);
-            font-weight: 800;
-            margin-bottom: 5px;
-            letter-spacing: -1px;
+            font-size: 2.1rem;
+            font-weight: 900;
+            margin-bottom: 6px;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 2px 6px rgba(34, 197, 94, 0.35));
+            transform: translateZ(40px); /* 3D layer */
         }
 
         .login-subtitle {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            margin-bottom: 25px;
+            font-size: 0.92rem;
+            color: #94a3b8;
+            margin-bottom: 28px;
+            transform: translateZ(30px); /* 3D layer */
         }
 
+        /* 3D Tab toggle styling */
         .login-tabs {
             display: flex;
-            background: var(--bg-color);
-            border-radius: 8px;
-            margin-bottom: 20px;
-            overflow: hidden;
-            border: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.65);
+            border-radius: 14px;
+            margin-bottom: 24px;
+            padding: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.4);
+            transform: translateZ(25px); /* 3D layer */
+            transform-style: preserve-3d;
         }
 
         .login-tab {
             flex: 1;
-            padding: 12px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: var(--text-muted);
+            padding: 11px;
+            font-weight: 700;
+            font-size: 0.88rem;
+            color: #94a3b8;
             cursor: pointer;
-            transition: 0.2s;
+            border-radius: 10px;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transform: translateZ(5px);
         }
 
         .login-tab.active {
-            background: var(--primary);
+            background: linear-gradient(135deg, #22c55e, #15803d);
             color: white;
+            box-shadow: 
+                0 4px 15px rgba(34, 197, 94, 0.3),
+                0 2px 0 #14532d;
+            transform: translateZ(10px) translateY(-1px);
         }
 
         .input-group {
-            margin-bottom: 15px;
+            margin-bottom: 18px;
             text-align: left;
+            transform: translateZ(20px); /* 3D layer */
         }
 
         .input-group label {
             display: block;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--text-muted);
-            margin-bottom: 5px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            color: #a7f3d0;
+            margin-bottom: 6px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
         }
 
         .input-group input,
         .input-group select {
             width: 100%;
-            padding: 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            font-size: 1rem;
+            padding: 13px 15px;
+            border: 1.5px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            font-size: 0.95rem;
             outline: none;
-            transition: border 0.3s ease, box-shadow 0.3s ease;
-            background: white;
+            transition: all 0.3s ease;
+            background: rgba(15, 23, 42, 0.55);
+            color: white;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+        }
+
+        .input-group input::placeholder {
+            color: #4b5563;
         }
 
         .input-group input:focus,
         .input-group select:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.15);
+            border-color: #22c55e;
+            box-shadow: 
+                0 0 0 4px rgba(34, 197, 94, 0.25),
+                inset 0 2px 4px rgba(0, 0, 0, 0.2);
+            background: rgba(15, 23, 42, 0.7);
         }
 
+        /* Premium 3D Button */
         .btn-full {
             width: 100%;
-            padding: 14px;
-            background: var(--primary);
+            padding: 15px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
             color: white;
             border: none;
-            border-radius: 8px;
-            font-weight: 700;
+            border-radius: 12px;
+            font-weight: 800;
             font-size: 1rem;
             cursor: pointer;
-            box-shadow: 0 4px 0 var(--primary-dark);
-            transition: transform 0.1s, box-shadow 0.1s, background 0.2s;
+            box-shadow: 
+                0 5px 0 #14532d,
+                0 8px 18px rgba(34, 197, 94, 0.2);
+            transition: all 0.1s ease;
+            position: relative;
+            overflow: hidden;
+            transform: translateZ(35px); /* Pushes button out in 3D space */
+        }
+
+        .btn-full::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -50%;
+            width: 200%;
+            height: 100%;
+            background: linear-gradient(
+                to right,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.2) 50%,
+                rgba(255, 255, 255, 0) 100%
+            );
+            transform: skewX(-25deg);
+            transition: 0.75s;
+            opacity: 0;
+        }
+
+        .btn-full:hover::after {
+            left: 125%;
+            opacity: 1;
+            transition: all 0.75s ease;
+        }
+
+        .btn-full:hover {
+            transform: translateZ(35px) translateY(-1px);
+            box-shadow: 
+                0 6px 0 #14532d,
+                0 10px 22px rgba(34, 197, 94, 0.28);
         }
 
         .btn-full:active {
-            transform: translateY(4px);
-            box-shadow: 0 0 0 var(--primary-dark);
+            transform: translateZ(35px) translateY(5px);
+            box-shadow: 
+                0 0px 0 #14532d,
+                0 3px 6px rgba(34, 197, 94, 0.15);
         }
 
-        @media (hover: hover) {
-            .btn-full:hover {
-                background: var(--primary-dark);
-            }
+        #customer-toggle-mode,
+        #owner-toggle-mode {
+            transform: translateZ(15px); /* 3D layer */
         }
 
         #otp-section {
@@ -332,20 +546,24 @@
             display: none;
         }
 
-        /* Sidebar Menu */
         .sidebar-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(9, 13, 22, 0.55);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
             z-index: 105;
-            display: none;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .sidebar-overlay.active {
-            display: block;
+            opacity: 1;
+            pointer-events: auto;
         }
 
         .sidebar {
@@ -356,7 +574,7 @@
             height: 100%;
             background: var(--card-bg);
             z-index: 110;
-            transition: left 0.3s ease-in-out;
+            transition: left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             display: flex;
             flex-direction: column;
             box-shadow: 2px 0 15px rgba(0, 0, 0, 0.2);
@@ -447,6 +665,24 @@
             text-align: center;
             color: var(--text-muted);
             font-size: 1.2rem;
+        }
+
+        /* ── Sidebar item stagger-in animation ── */
+        .sidebar-item,
+        .sidebar-divider {
+            opacity: 0;
+            transform: translateX(-18px);
+            transition:
+                opacity 0.32s ease,
+                transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+                background 0.2s,
+                color 0.2s;
+        }
+
+        .sidebar-item.sb-visible,
+        .sidebar-divider.sb-visible {
+            opacity: 1;
+            transform: translateX(0);
         }
 
         .sidebar-divider {
@@ -821,7 +1057,7 @@
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.5);
-            z-index: 99;
+            z-index: 9900;
             display: none;
         }
 
@@ -839,7 +1075,7 @@
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border-radius: 24px 24px 0 0;
-            z-index: 100;
+            z-index: 9910;
             transition: bottom 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.1);
             display: flex;
             flex-direction: column;
@@ -2839,6 +3075,162 @@
             padding: 4px;
         }
 
+        /* Platform-Specific UPI UI */
+        .upi-platform-container {
+            margin-top: 16px;
+            margin-bottom: 16px;
+        }
+
+        .upi-instruction-title {
+            font-size: 0.85rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .upi-app-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .upi-app-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 0.88rem;
+            font-weight: 800;
+            color: white !important;
+            text-decoration: none !important;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .upi-app-btn:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.05);
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+        }
+
+        .upi-app-btn:active {
+            transform: translateY(1px);
+        }
+
+        .upi-app-btn.gpay {
+            background: linear-gradient(135deg, #1a73e8, #4285f4);
+        }
+
+        .upi-app-btn.phonepe {
+            background: linear-gradient(135deg, #5f259f, #8234db);
+        }
+
+        .upi-app-btn.paytm {
+            background: linear-gradient(135deg, #00baf2, #002e6e);
+        }
+
+        .upi-app-btn.bhim {
+            background: linear-gradient(135deg, #f15a24, #005691);
+        }
+
+        .upi-app-btn.generic {
+            grid-column: span 2;
+            background: linear-gradient(135deg, #374151, #1f2937);
+        }
+
+        .upi-desktop-info-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            text-align: left;
+        }
+
+        .upi-desktop-info-card p {
+            margin: 0 0 10px 0;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            color: var(--text-muted);
+        }
+
+        .upi-copy-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-top: 8px;
+            gap: 10px;
+        }
+
+        .upi-copy-text {
+            font-family: monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-main);
+            word-break: break-all;
+            user-select: all;
+        }
+
+        .upi-copy-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            transition: background 0.15s, transform 0.1s;
+        }
+
+        .upi-copy-btn:hover {
+            filter: brightness(1.1);
+        }
+
+        .upi-copy-btn:active {
+            transform: scale(0.95);
+        }
+
+        .upi-copy-btn.copied {
+            background: #16a34a !important;
+        }
+
+        .upi-or-divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 14px 0;
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            gap: 10px;
+        }
+
+        .upi-or-divider::before,
+        .upi-or-divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--border-color);
+        }
+
         /* Waiting screen */
         .pay-waiting-screen {
             text-align: center;
@@ -3737,10 +4129,686 @@
                 transform: scaleX(0);
             }
         }
+
+        /* Premium Layout for Main App */
+        #app-container {
+            background: transparent;
+            color: #f8fafc;
+        }
+
+        body.sidebar-open header,
+        body.sidebar-open main#customer-main {
+            pointer-events: none !important;
+        }
+
+        header {
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2) !important;
+        }
+
+        .brand-name {
+            color: #4ade80 !important;
+            text-shadow: 0 2px 10px rgba(74, 222, 128, 0.25);
+        }
+
+        .delivery-time {
+            color: #94a3b8 !important;
+        }
+
+        .search-bar {
+            background: rgba(15, 23, 42, 0.55) !important;
+            border: 1.5px solid rgba(255, 255, 255, 0.08) !important;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        .search-bar input {
+            color: white !important;
+        }
+
+        .search-bar input::placeholder {
+            color: #4b5563 !important;
+        }
+
+        /* Sidebar Glassmorphic Menu */
+        .sidebar {
+            background: rgba(15, 23, 42, 0.75) !important;
+            backdrop-filter: blur(25px) !important;
+            -webkit-backdrop-filter: blur(25px) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+            color: white !important;
+        }
+
+        .sidebar-item {
+            color: #e2e8f0 !important;
+        }
+
+        .sidebar-item i {
+            color: #94a3b8 !important;
+        }
+
+        /* Section Titles */
+        .section-title {
+            color: #f1f5f9 !important;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Product Cards */
+        .product-card {
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(15px) !important;
+            -webkit-backdrop-filter: blur(15px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2) !important;
+            color: white !important;
+            transform-style: preserve-3d;
+            perspective: 1000px;
+            transition: transform 0.15s ease-out, box-shadow 0.3s ease, border-color 0.3s ease !important;
+        }
+
+        .product-card:hover {
+            border-color: #22c55e !important;
+            box-shadow: 
+                0 15px 30px rgba(0, 0, 0, 0.4),
+                0 0 20px rgba(34, 197, 94, 0.2) !important;
+        }
+
+        .product-card .product-title {
+            color: #f8fafc !important;
+            transform: translateZ(20px);
+            transition: transform 0.15s ease-out;
+        }
+
+        .product-card .product-image {
+            background: rgba(15, 23, 42, 0.3) !important;
+            transform: translateZ(35px);
+            transition: transform 0.15s ease-out;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .product-card .product-weight {
+            color: #94a3b8 !important;
+            transform: translateZ(15px);
+            transition: transform 0.15s ease-out;
+        }
+
+        .product-card .price-row {
+            transform: translateZ(25px);
+            transition: transform 0.15s ease-out;
+        }
+
+        .product-card .discount-tag {
+            transform: translateZ(45px);
+            box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+        }
+
+        .product-card .delivery-tag {
+            transform: translateZ(45px);
+            background: rgba(15, 23, 42, 0.8) !important;
+            color: #4ade80 !important;
+            border: 1px solid rgba(74, 222, 128, 0.2);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .product-card .add-btn {
+            background: rgba(34, 197, 94, 0.15) !important;
+            color: #4ade80 !important;
+            border: 1.5px solid #22c55e !important;
+            box-shadow: 0 4px 10px rgba(34, 197, 94, 0.15);
+            transition: all 0.2s !important;
+        }
+
+        .product-card .add-btn:hover {
+            background: #22c55e !important;
+            color: white !important;
+            box-shadow: 0 6px 15px rgba(34, 197, 94, 0.35);
+        }
+
+        /* Kit Cards */
+        .kit-card {
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(15px) !important;
+            -webkit-backdrop-filter: blur(15px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2) !important;
+            color: white !important;
+            transform-style: preserve-3d;
+            perspective: 1000px;
+            transition: transform 0.15s ease-out, box-shadow 0.3s ease, border-color 0.3s ease !important;
+        }
+
+        .kit-card:hover {
+            border-color: #22c55e !important;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(34, 197, 94, 0.2) !important;
+        }
+
+        .kit-card .kit-title {
+            transform: translateZ(25px);
+        }
+
+        .kit-card .kit-icon {
+            background: rgba(15, 23, 42, 0.4) !important;
+            transform: translateZ(35px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .kit-card .kit-desc {
+            color: #94a3b8 !important;
+            transform: translateZ(15px);
+        }
+
+        .kit-card .kit-footer {
+            transform: translateZ(20px);
+        }
+
+        /* Category Icons */
+        .category-card {
+            transform-style: preserve-3d;
+            perspective: 1000px;
+        }
+
+        .category-icon {
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            color: white !important;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15) !important;
+            transition: transform 0.15s ease-out, box-shadow 0.3s ease, border-color 0.3s ease !important;
+        }
+
+        .category-card.active .category-icon {
+            border-color: #22c55e !important;
+            box-shadow: 0 8px 20px rgba(34, 197, 94, 0.3) !important;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(21, 128, 61, 0.2)) !important;
+        }
+
+        .category-name {
+            color: #94a3b8 !important;
+            transition: color 0.2s;
+        }
+
+        .category-card.active .category-name {
+            color: #4ade80 !important;
+            font-weight: 700;
+        }
+
+        /* Gacha & Parchi Banners */
+        .gacha-banner {
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            box-shadow: 
+                0 10px 25px rgba(124, 58, 237, 0.2),
+                inset 0 1px 1px rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .parchi-banner {
+            background: linear-gradient(135deg, rgba(254, 240, 138, 0.12), rgba(253, 224, 71, 0.12)) !important;
+            border: 1.5px solid rgba(202, 138, 4, 0.4) !important;
+            color: #fef08a !important;
+            box-shadow: 0 10px 25px rgba(202, 138, 4, 0.1) !important;
+            transform-style: preserve-3d;
+            perspective: 1000px;
+        }
+
+        .parchi-banner h4 {
+            color: #fef08a !important;
+            transform: translateZ(20px);
+        }
+
+        .parchi-banner p {
+            color: #eab308 !important;
+            transform: translateZ(15px);
+        }
+
+        .parchi-btn {
+            background: #ca8a04 !important;
+            color: white !important;
+            transform: translateZ(25px);
+            box-shadow: 0 4px 10px rgba(202, 138, 4, 0.3);
+        }
+
+        /* Slide Modals */
+        .slide-modal {
+            background: rgba(15, 23, 42, 0.8) !important;
+            backdrop-filter: blur(25px) !important;
+            -webkit-backdrop-filter: blur(25px) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
+            transform-style: preserve-3d;
+            perspective: 1200px;
+            transform: perspective(1200px) rotateX(15deg) translateY(60px) translateZ(-100px) scale(0.92);
+            opacity: 0;
+            transition: bottom 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.45s ease-out !important;
+        }
+
+        .slide-modal.open {
+            transform: perspective(1200px) rotateX(0deg) translateY(0) translateZ(0) scale(1) !important;
+            opacity: 1 !important;
+        }
+
+        /* 3D Map Picker & Owner map zoom transition */
+        .owner-map-modal, .gmap-overlay {
+            background: rgba(9, 13, 22, 0.8) !important;
+            backdrop-filter: blur(25px) !important;
+            -webkit-backdrop-filter: blur(25px) !important;
+            opacity: 0;
+            transform: scale(0.9) translateZ(-40px);
+            transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            pointer-events: none;
+        }
+        .owner-map-modal.active, .gmap-overlay.active {
+            opacity: 1 !important;
+            transform: scale(1) translateZ(0) !important;
+            pointer-events: auto !important;
+        }
+
+        /* 3D Glassmorphic Color & Readability Overrides */
+        #app-container *[style*="color:#0f172a"],
+        #app-container *[style*="color: #0f172a"],
+        #owner-shell *[style*="color:#0f172a"],
+        #owner-shell *[style*="color: #0f172a"],
+        .slide-modal *[style*="color:#0f172a"],
+        .slide-modal *[style*="color: #0f172a"] {
+            color: #f8fafc !important;
+        }
+
+        #app-container *[style*="color:#1e293b"],
+        #app-container *[style*="color: #1e293b"],
+        #owner-shell *[style*="color:#1e293b"],
+        #owner-shell *[style*="color: #1e293b"],
+        .slide-modal *[style*="color:#1e293b"],
+        .slide-modal *[style*="color: #1e293b"] {
+            color: #e2e8f0 !important;
+        }
+
+        #app-container *[style*="color:#475569"],
+        #app-container *[style*="color: #475569"],
+        #owner-shell *[style*="color:#475569"],
+        #owner-shell *[style*="color: #475569"],
+        .slide-modal *[style*="color:#475569"],
+        .slide-modal *[style*="color: #475569"] {
+            color: #cbd5e1 !important;
+        }
+
+        #app-container div[style*="background:white"],
+        #app-container div[style*="background: white"],
+        #owner-shell div[style*="background:white"],
+        #owner-shell div[style*="background: white"],
+        #owner-shell div[style*="background:#fff"],
+        #owner-shell div[style*="background: #fff"],
+        .slide-modal div[style*="background:white"],
+        .slide-modal div[style*="background: white"],
+        .slide-modal div[style*="background:#fff"],
+        .slide-modal div[style*="background: #fff"] {
+            background: rgba(15, 23, 42, 0.45) !important;
+            border-color: rgba(255, 255, 255, 0.08) !important;
+            color: white !important;
+        }
+
+        #owner-shell div[style*="background:#fdf4ff"],
+        #owner-shell div[style*="background: #fdf4ff"] {
+            background: rgba(124, 58, 237, 0.1) !important;
+            border-color: rgba(124, 58, 237, 0.25) !important;
+        }
+
+        #owner-shell div[style*="background:#f8fafc"],
+        #owner-shell div[style*="background: #f8fafc"] {
+            background: rgba(15, 23, 42, 0.35) !important;
+            border-color: rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .modal-header {
+            background: rgba(15, 23, 42, 0.3) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+            color: white !important;
+        }
+
+        .modal-header h3 {
+            color: white !important;
+        }
+
+        .modal-footer {
+            background: rgba(9, 13, 22, 0.8) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+
+        /* Cart Items */
+        .cart-item-name {
+            color: #f1f5f9 !important;
+        }
+
+        .cart-item-price {
+            color: #94a3b8 !important;
+        }
+
+        /* Digital Ledger (Khata) & Dashboard Card */
+        .dashboard-card {
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25) !important;
+            color: white !important;
+        }
+
+        .dashboard-card h3, .dashboard-card h4 {
+            color: white !important;
+        }
+
+        .dashboard-card p {
+            color: #94a3b8 !important;
+        }
+
+        .dashboard-card div[style*="background:white"] {
+            background: rgba(15, 23, 42, 0.5) !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            color: white !important;
+        }
+
+        .dashboard-card p[style*="color:#1e293b"] {
+            color: #e2e8f0 !important;
+        }
+
+        .dashboard-card div[style*="background:white"] span {
+            color: #a7f3d0 !important;
+        }
+
+        /* Owner Dashboard Shell & elements */
+        #owner-shell {
+            background: transparent !important;
+            color: white !important;
+        }
+
+        .ow-bottom-nav {
+            background: rgba(15, 23, 42, 0.85) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .ow-nav-item {
+            color: #64748b !important;
+        }
+
+        .ow-nav-item.active {
+            color: #22c55e !important;
+        }
+
+        .ow-stat-card {
+            background: rgba(15, 23, 42, 0.5) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            color: white !important;
+        }
+
+        .ow-stat-card .stat-value {
+            color: white !important;
+        }
+
+        .ow-stat-card .stat-label {
+            color: #94a3b8 !important;
+        }
+
+        .order-card {
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            color: white !important;
+        }
+
+        .order-customer {
+            color: white !important;
+        }
+
+        .order-items {
+            color: #cbd5e1 !important;
+        }
+
+        .order-total {
+            color: white !important;
+        }
+
+        .ow-product-row {
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            color: white !important;
+        }
+
+        .ow-prod-name {
+            color: white !important;
+        }
+
+        .ow-setting-row {
+            background: rgba(15, 23, 42, 0.45) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            color: white !important;
+        }
+
+        .ow-setting-label {
+            color: white !important;
+        }
+
+        .ow-search {
+            background: rgba(15, 23, 42, 0.5) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .ow-search input {
+            color: white !important;
+        }
+
+        /* Map picker overlays */
+        .gmap-address-bar {
+            background: rgba(15, 23, 42, 0.9) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+            color: white !important;
+        }
+
+        .gmap-addr-text {
+            color: white !important;
+        }
+
+        .gmap-search-bar {
+            background: rgba(15, 23, 42, 0.8) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+
+        #gmap-search-input {
+            background: rgba(15, 23, 42, 0.6) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            color: white !important;
+        }
+
+        .gmap-suggestions {
+            background: rgba(15, 23, 42, 0.9) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .gmap-suggestion-item {
+            color: #e2e8f0 !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .gmap-suggestion-item:active {
+            background: rgba(34, 197, 94, 0.15) !important;
+        }
+
+        /* Skeleton Loading Animation */
+        .skeleton-shimmer {
+            background: linear-gradient(90deg, rgba(0, 0, 0, 0.06) 25%, rgba(0, 0, 0, 0.13) 50%, rgba(0, 0, 0, 0.06) 75%);
+            background-size: 200% 100%;
+            animation: skeleton-shimmer-ani 1.5s infinite linear;
+            display: inline-block;
+        }
+
+        /* Adjust shimmer for dark/glassmorphic card backgrounds */
+        .login-card .skeleton-shimmer,
+        .owner-shell .skeleton-shimmer,
+        .ow-stat-card .skeleton-shimmer,
+        .order-card .skeleton-shimmer,
+        .dashboard-card .skeleton-shimmer,
+        #owner-shell .skeleton-shimmer,
+        #my-orders-container .skeleton-shimmer,
+        .upi-verify-banner .skeleton-shimmer {
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.05) 75%);
+            background-size: 200% 100%;
+        }
+
+        @keyframes skeleton-shimmer-ani {
+            0% {
+                background-position: -200% 0;
+            }
+            100% {
+                background-position: 200% 0;
+            }
+        }
+
+        /* ─── THREE-DOT MENU ─────────────────────────────── */
+        .three-dot-btn {
+            position: relative;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 1.25rem;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.2s, color 0.2s;
+            flex-shrink: 0;
+        }
+
+        .three-dot-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: #f1f5f9;
+        }
+
+        .three-dot-btn:active {
+            transform: scale(0.92);
+        }
+
+        /* Popup menu */
+        .dot-popup {
+            position: absolute;
+            top: calc(100% + 10px);
+            right: 0;
+            width: 230px;
+            background: rgba(13, 18, 30, 0.92);
+            backdrop-filter: blur(28px) saturate(160%);
+            -webkit-backdrop-filter: blur(28px) saturate(160%);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 18px;
+            box-shadow:
+                0 20px 50px rgba(0,0,0,0.55),
+                0 4px 12px rgba(0,0,0,0.35),
+                inset 0 1px 0 rgba(255,255,255,0.08);
+            z-index: 99999;
+            padding: 8px 0;
+            overflow: hidden;
+            /* Hidden state */
+            opacity: 0;
+            transform: scale(0.88) translateY(-8px);
+            transform-origin: top right;
+            pointer-events: none;
+            transition:
+                opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .dot-popup.open {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+        }
+
+        /* Each menu item — starts invisible, flies in */
+        .dot-popup-item {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            padding: 13px 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #e2e8f0;
+            border-radius: 0;
+            transition: background 0.18s, color 0.18s;
+            /* Staggered reveal – JS adds .visible */
+            opacity: 0;
+            transform: translateY(10px);
+            transition:
+                opacity 0.3s ease,
+                transform 0.3s ease,
+                background 0.18s,
+                color 0.18s;
+        }
+
+        .dot-popup-item.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .dot-popup-item:hover {
+            background: rgba(255,255,255,0.07);
+            color: #4ade80;
+        }
+
+        .dot-popup-item i {
+            width: 20px;
+            text-align: center;
+            font-size: 1rem;
+            color: #64748b;
+            transition: color 0.18s;
+            flex-shrink: 0;
+        }
+
+        .dot-popup-item:hover i {
+            color: #4ade80;
+        }
+
+        .dot-popup-divider {
+            height: 1px;
+            background: rgba(255,255,255,0.06);
+            margin: 5px 16px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .dot-popup-divider.visible {
+            opacity: 1;
+        }
+
+        /* Wrapper so popup is positioned relative to the button */
+        .three-dot-wrapper {
+            position: relative;
+        }
     </style>
 </head>
 
 <body>
+
+    <!-- Liquid Glass Background -->
+    <div id="liquid-glass-background">
+        <div class="liquid-blob blob-green"></div>
+        <div class="liquid-blob blob-purple"></div>
+        <div class="liquid-blob blob-orange"></div>
+        <div class="liquid-blob blob-blue"></div>
+    </div>
 
     <!-- GLOBAL LOADER -->
     <div class="ai-loader-overlay" id="ai-loader">
@@ -3760,6 +4828,10 @@
 
     <!-- 1. LOGIN SCREEN -->
     <div id="login-container">
+        <!-- Glowing background 3D circles -->
+        <div class="login-glow-ball login-glow-1"></div>
+        <div class="login-glow-ball login-glow-2"></div>
+
         <!-- Verification Success Animation Overlay -->
         <div id="login-success-overlay" style="
             position: absolute;
@@ -3792,8 +4864,9 @@
         </div>
 
         <div class="login-card">
-            <img src="/static/logo.png" alt="Patel Groceries Logo"
-                style="width: 100px; height: 100px; object-fit: contain; margin-bottom: 15px; border-radius: 12px;">
+            <div class="login-logo-container">
+                <img src="/static/logo.png" alt="Patel Groceries Logo" class="login-logo-img">
+            </div>
             <div class="login-logo">PATEL GROCERIES</div>
             <div class="login-subtitle">Your neighborhood shop, delivered in 10 mins.</div>
 
@@ -3910,50 +4983,50 @@
     </div>
 
 
+    <!-- SIDEBAR OVERLAY & MENU -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="user-profile-summary">
+                <div class="user-avatar"><i class="fa-solid fa-user"></i></div>
+                <div class="user-info">
+                    <h4 id="sidebar-name">Guest</h4>
+                    <p id="sidebar-contact">user@mail.com</p>
+                </div>
+            </div>
+            <button class="close-sidebar" onclick="toggleSidebar()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="sidebar-menu">
+            <div class="sidebar-item" onclick="toggleSidebar()"><i class="fa-solid fa-house"></i> Home</div>
+            <div class="sidebar-item" onclick="openFeatureScreen('profile')"><i class="fa-regular fa-user"></i> My
+                Profile</div>
+            <div class="sidebar-item" onclick="openFeatureScreen('orders')"><i class="fa-solid fa-box-open"></i> My
+                Orders</div>
+            <div class="sidebar-item" onclick="openFeatureScreen('khata')" style="color: var(--khata);"><i
+                    class="fa-solid fa-book"></i> Digital Ledger</div>
+
+            <div class="sidebar-divider"></div>
+
+            <div class="sidebar-item" onclick="openFeatureScreen('address')"><i
+                    class="fa-solid fa-location-dot"></i> Delivery Addresses</div>
+            <div class="sidebar-item" onclick="openFeatureScreen('settings')"><i class="fa-solid fa-gear"></i>
+                Settings</div>
+
+            <div class="sidebar-divider"></div>
+
+            <div class="sidebar-item" onclick="openFeatureScreen('support')"><i class="fa-solid fa-headset"></i>
+                Help & Support</div>
+            <div class="sidebar-item" onclick="openFeatureScreen('terms')"><i class="fa-solid fa-file-contract"></i>
+                Terms &
+                Policies</div>
+            <div class="sidebar-item text-danger" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i>
+                Logout</div>
+        </div>
+    </div>
+
     <!-- 2. MAIN APP CONTAINER -->
     <div id="app-container">
-
-        <!-- SIDEBAR OVERLAY & MENU -->
-        <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="user-profile-summary">
-                    <div class="user-avatar"><i class="fa-solid fa-user"></i></div>
-                    <div class="user-info">
-                        <h4 id="sidebar-name">Guest</h4>
-                        <p id="sidebar-contact">user@mail.com</p>
-                    </div>
-                </div>
-                <button class="close-sidebar" onclick="toggleSidebar()"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-
-            <div class="sidebar-menu">
-                <div class="sidebar-item" onclick="toggleSidebar()"><i class="fa-solid fa-house"></i> Home</div>
-                <div class="sidebar-item" onclick="openFeatureScreen('profile')"><i class="fa-regular fa-user"></i> My
-                    Profile</div>
-                <div class="sidebar-item" onclick="openFeatureScreen('orders')"><i class="fa-solid fa-box-open"></i> My
-                    Orders</div>
-                <div class="sidebar-item" onclick="openFeatureScreen('khata')" style="color: var(--khata);"><i
-                        class="fa-solid fa-book"></i> Digital Ledger</div>
-
-                <div class="sidebar-divider"></div>
-
-                <div class="sidebar-item" onclick="openFeatureScreen('address')"><i
-                        class="fa-solid fa-location-dot"></i> Delivery Addresses</div>
-                <div class="sidebar-item" onclick="openFeatureScreen('settings')"><i class="fa-solid fa-gear"></i>
-                    Settings</div>
-
-                <div class="sidebar-divider"></div>
-
-                <div class="sidebar-item" onclick="openFeatureScreen('support')"><i class="fa-solid fa-headset"></i>
-                    Help & Support</div>
-                <div class="sidebar-item" onclick="openFeatureScreen('terms')"><i class="fa-solid fa-file-contract"></i>
-                    Terms &
-                    Policies</div>
-                <div class="sidebar-item text-danger" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i>
-                    Logout</div>
-            </div>
-        </div>
 
         <header>
             <div class="header-top">
@@ -4045,132 +5118,132 @@
             <div id="admin-product-list"></div>
         </div>
 
-        <!-- ============================== -->
-        <!-- APP MODALS                    -->
-        <!-- ============================== -->
-        <div class="modal-overlay" id="modal-overlay" onclick="closeModal(); closeGachaModal(); closeAdminModal();">
-        </div>
-
-        <!-- Gacha Machine Modal -->
-        <div class="slide-modal" id="gacha-modal" style="z-index: 9999; max-height: 92vh;">
-            <div class="modal-header"
-                style="background: linear-gradient(135deg,#1e1b4b,#312e81); color:white; border-radius: 24px 24px 0 0;">
-                <h3 id="gacha-modal-title" style="color:white;">🎰 Mystery Munchies Gacha</h3>
-                <button class="close-modal" onclick="closeGachaModal()" style="color:white;"><i
-                        class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="modal-body"
-                style="background: linear-gradient(180deg,#1e1b4b 0%,#312e81 40%,#4c1d95 100%); padding:0; overflow:hidden; position:relative; min-height:420px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-
-                <!-- Canvas for particles / confetti -->
-                <canvas id="gacha-canvas"
-                    style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;"></canvas>
-
-                <!-- Glowing ring behind the box -->
-                <div id="gacha-glow-ring" style="
-                    position:absolute; width:200px; height:200px;
-                    border-radius:50%;
-                    background: radial-gradient(circle, rgba(167,139,250,0.35) 0%, transparent 70%);
-                    filter: blur(18px);
-                    transition: all 0.4s;
-                    z-index:2;
-                "></div>
-
-                <!-- 3D Box scene -->
-                <div id="gacha-scene"
-                    style="perspective:600px; width:160px; height:160px; margin:0 auto; z-index:3; position:relative;">
-                    <div id="gacha-cube" style="
-                        width:160px; height:160px;
-                        transform-style: preserve-3d;
-                        animation: gcIdleFloat 3s ease-in-out infinite;
-                        position:relative;
-                    ">
-                        <!-- 6 faces -->
-                        <div class="gc-face gc-front">🎁</div>
-                        <div class="gc-face gc-back">🎰</div>
-                        <div class="gc-face gc-left">✨</div>
-                        <div class="gc-face gc-right">🍜</div>
-                        <div class="gc-face gc-top">🌟</div>
-                        <div class="gc-face gc-bottom">🎲</div>
-                    </div>
-                </div>
-
-                <!-- Status label -->
-                <div id="gacha-status-label" style="
-                    z-index:4; position:relative;
-                    margin-top:18px;
-                    font-size:0.9rem; font-weight:700;
-                    color:rgba(255,255,255,0.8);
-                    letter-spacing:0.5px;
-                    min-height:24px;
-                ">Tap ROLL to unlock your mystery snacks!</div>
-
-                <!-- Revealed items strip -->
-                <div id="gacha-items-strip" style="
-                    z-index:4; position:relative;
-                    display:flex; gap:10px;
-                    margin-top:14px;
-                    min-height:80px;
-                    align-items:center;
-                    justify-content:center;
-                "></div>
-
-                <!-- Win banner -->
-                <div id="gacha-win-banner" style="
-                    display:none; z-index:4; position:relative;
-                    background: linear-gradient(135deg,#fbbf24,#f59e0b);
-                    color:#1c1917;
-                    border-radius:12px;
-                    padding:10px 18px;
-                    font-weight:800;
-                    font-size:0.9rem;
-                    text-align:center;
-                    margin-top:8px;
-                    box-shadow: 0 0 20px rgba(251,191,36,0.6);
-                    animation: gcWinPulse 0.8s ease-in-out infinite alternate;
-                "></div>
-
-                <!-- Roll button -->
-                <button id="gacha-roll-btn" onclick="rollGacha()" style="
-                    z-index:4; position:relative;
-                    margin:18px 20px 22px 20px;
-                    width: calc(100% - 40px);
-                    padding:16px;
-                    border:none; border-radius:14px;
-                    background: linear-gradient(135deg, #a855f7, #ec4899);
-                    color:white; font-weight:800; font-size:1.05rem;
-                    cursor:pointer;
-                    box-shadow: 0 6px 0 #7e22ce, 0 10px 25px rgba(168,85,247,0.5);
-                    transition: transform 0.1s, box-shadow 0.1s, opacity 0.3s;
-                    letter-spacing:1px;
-                ">🎲 ROLL FOR ₹99</button>
-            </div>
-        </div>
-
-        <!-- Cart & Feature Slide Modal -->
-        <div class="slide-modal" id="slide-modal">
-            <div class="modal-header">
-                <h3 id="modal-title">Your Cart</h3>
-                <button class="close-modal" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="modal-body" id="modal-body"></div>
-            <div class="modal-footer" id="modal-footer" style="display: none;">
-                <label class="veggie-check">
-                    <input type="checkbox" id="veggie-video-check">
-                    🎥 Video call me to show fresh veggies before packing
-                </label>
-                <div class="checkout-actions">
-                    <button class="checkout-btn" onclick="openPaymentSelection()" id="pay-now-btn">
-                        💳 Pay <span id="cart-total-price">₹0</span>
-                    </button>
-                    <button class="khata-btn" onclick="processCheckoutOrder('khata')">
-                        <i class="fa-solid fa-book"></i> Store Credit
-                    </button>
-                </div>
-            </div>
-        </div>
-
     </div> <!-- END APP CONTAINER -->
+
+    <!-- ============================== -->
+    <!-- APP MODALS                    -->
+    <!-- ============================== -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModal(); closeGachaModal(); closeAdminModal();">
+    </div>
+
+    <!-- Gacha Machine Modal -->
+    <div class="slide-modal" id="gacha-modal" style="z-index: 9999; max-height: 92vh;">
+        <div class="modal-header"
+            style="background: linear-gradient(135deg,#1e1b4b,#312e81); color:white; border-radius: 24px 24px 0 0;">
+            <h3 id="gacha-modal-title" style="color:white;">🎰 Mystery Munchies Gacha</h3>
+            <button class="close-modal" onclick="closeGachaModal()" style="color:white;"><i
+                    class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body"
+            style="background: linear-gradient(180deg,#1e1b4b 0%,#312e81 40%,#4c1d95 100%); padding:0; overflow:hidden; position:relative; min-height:420px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+
+            <!-- Canvas for particles / confetti -->
+            <canvas id="gacha-canvas"
+                style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;"></canvas>
+
+            <!-- Glowing ring behind the box -->
+            <div id="gacha-glow-ring" style="
+                position:absolute; width:200px; height:200px;
+                border-radius:50%;
+                background: radial-gradient(circle, rgba(167,139,250,0.35) 0%, transparent 70%);
+                filter: blur(18px);
+                transition: all 0.4s;
+                z-index:2;
+            "></div>
+
+            <!-- 3D Box scene -->
+            <div id="gacha-scene"
+                style="perspective:600px; width:160px; height:160px; margin:0 auto; z-index:3; position:relative;">
+                <div id="gacha-cube" style="
+                    width:160px; height:160px;
+                    transform-style: preserve-3d;
+                    animation: gcIdleFloat 3s ease-in-out infinite;
+                    position:relative;
+                ">
+                    <!-- 6 faces -->
+                    <div class="gc-face gc-front">🎁</div>
+                    <div class="gc-face gc-back">🎰</div>
+                    <div class="gc-face gc-left">✨</div>
+                    <div class="gc-face gc-right">🍜</div>
+                    <div class="gc-face gc-top">🌟</div>
+                    <div class="gc-face gc-bottom">🎲</div>
+                </div>
+            </div>
+
+            <!-- Status label -->
+            <div id="gacha-status-label" style="
+                z-index:4; position:relative;
+                margin-top:18px;
+                font-size:0.9rem; font-weight:700;
+                color:rgba(255,255,255,0.8);
+                letter-spacing:0.5px;
+                min-height:24px;
+            ">Tap ROLL to unlock your mystery snacks!</div>
+
+            <!-- Revealed items strip -->
+            <div id="gacha-items-strip" style="
+                z-index:4; position:relative;
+                display:flex; gap:10px;
+                margin-top:14px;
+                min-height:80px;
+                align-items:center;
+                justify-content:center;
+            "></div>
+
+            <!-- Win banner -->
+            <div id="gacha-win-banner" style="
+                display:none; z-index:4; position:relative;
+                background: linear-gradient(135deg,#fbbf24,#f59e0b);
+                color:#1c1917;
+                border-radius:12px;
+                padding:10px 18px;
+                font-weight:800;
+                font-size:0.9rem;
+                text-align:center;
+                margin-top:8px;
+                box-shadow: 0 0 20px rgba(251,191,36,0.6);
+                animation: gcWinPulse 0.8s ease-in-out infinite alternate;
+            "></div>
+
+            <!-- Roll button -->
+            <button id="gacha-roll-btn" onclick="rollGacha()" style="
+                z-index:4; position:relative;
+                margin:18px 20px 22px 20px;
+                width: calc(100% - 40px);
+                padding:16px;
+                border:none; border-radius:14px;
+                background: linear-gradient(135deg, #a855f7, #ec4899);
+                color:white; font-weight:800; font-size:1.05rem;
+                cursor:pointer;
+                box-shadow: 0 6px 0 #7e22ce, 0 10px 25px rgba(168,85,247,0.5);
+                transition: transform 0.1s, box-shadow 0.1s, opacity 0.3s;
+                letter-spacing:1px;
+            ">🎲 ROLL FOR ₹99</button>
+        </div>
+    </div>
+
+    <!-- Cart & Feature Slide Modal -->
+    <div class="slide-modal" id="slide-modal">
+        <div class="modal-header">
+            <h3 id="modal-title">Your Cart</h3>
+            <button class="close-modal" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer" id="modal-footer" style="display: none;">
+            <label class="veggie-check">
+                <input type="checkbox" id="veggie-video-check">
+                🎥 Video call me to show fresh veggies before packing
+            </label>
+            <div class="checkout-actions">
+                <button class="checkout-btn" onclick="openPaymentSelection()" id="pay-now-btn">
+                    💳 Pay <span id="cart-total-price">₹0</span>
+                </button>
+                <button class="khata-btn" onclick="processCheckoutOrder('khata')">
+                    <i class="fa-solid fa-book"></i> Store Credit
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- ================================================ -->
     <!-- GLOBAL MODALS (shared by customer & owner views) -->
@@ -4468,6 +5541,8 @@
             </a>
         </div>
     </div>
+
+
 
 </body>
 

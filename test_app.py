@@ -176,6 +176,9 @@ class PatelKiranaTestCase(unittest.TestCase):
 
     def test_customer_profile_save_and_load(self):
         """Test saving and loading customer profile details"""
+        with self.client.session_transaction() as sess:
+            sess['customer_phone'] = "9876543210"
+
         profile_data = {
             "phone": "9876543210",
             "email": "customer@gmail.com",
@@ -269,6 +272,9 @@ class PatelKiranaTestCase(unittest.TestCase):
             self.assertEqual(response.status_code, 404)
 
         # Get my-orders by phone
+        with self.client.session_transaction() as sess:
+            sess['customer_phone'] = "9876543210"
+
         with self.client.get('/api/my-orders?phone=9876543210') as response:
             self.assertEqual(response.status_code, 200)
             data = json.loads(response.data)
@@ -276,6 +282,9 @@ class PatelKiranaTestCase(unittest.TestCase):
             self.assertTrue(len(data['orders']) >= 1)
 
         # Get owner orders
+        with self.client.session_transaction() as sess:
+            sess['is_owner'] = True
+
         with self.client.get('/api/owner/orders') as response:
             self.assertEqual(response.status_code, 200)
             data = json.loads(response.data)
@@ -631,7 +640,10 @@ class PatelKiranaTestCase(unittest.TestCase):
             self.assertTrue(data['success'])
             self.assertEqual(data['overrides'], [])
 
-        # 2. Post a new override (mark product 1 out of stock)
+        # 2. Post a new override (mark product 1 out of stock, requires owner login)
+        with self.client.session_transaction() as sess:
+            sess['is_owner'] = True
+
         payload = {
             "product_id": 1,
             "in_stock": 0,
@@ -667,6 +679,154 @@ class PatelKiranaTestCase(unittest.TestCase):
             data = json.loads(response.data)
             self.assertFalse(data['success'])
             self.assertIn('required', data['message'])
+
+    def test_unauthorized_owner_access(self):
+        """Verify that unauthorized requests to owner endpoints are blocked with 403"""
+        # Ensure we are not logged in as owner
+        with self.client.session_transaction() as sess:
+            sess.pop('is_owner', None)
+
+        endpoints = [
+            ('/api/owner/orders', 'GET', None),
+            ('/api/owner/verify-payment', 'POST', {"order_id": "123", "action": "confirm"}),
+            ('/api/owner/update-status', 'POST', {"order_id": "123", "status": "packing"}),
+            ('/api/owner/cancel-order', 'POST', {"order_id": "123"}),
+            ('/api/owner/clear-old-orders', 'POST', {"days": 30}),
+            ('/api/owner/update-inventory', 'POST', {"product_id": 1, "in_stock": 1})
+        ]
+        for url, method, payload in endpoints:
+            if method == 'GET':
+                with self.client.get(url) as response:
+                    self.assertEqual(response.status_code, 403, f"Endpoint {url} should return 403")
+            else:
+                with self.client.post(url, data=json.dumps(payload or {}), content_type='application/json') as response:
+                    self.assertEqual(response.status_code, 403, f"Endpoint {url} should return 403")
+
+    def test_idor_customer_profile_save(self):
+        """Verify that a customer cannot modify another customer's profile"""
+        with self.client.session_transaction() as sess:
+            sess['customer_phone'] = "1111111111"
+
+        profile_data = {
+            "phone": "2222222222",
+            "email": "victim@gmail.com",
+            "name": "Victim Name",
+            "addresses": ["Victim Address"],
+            "khata_bal": 500.0
+        }
+        with self.client.post('/api/customer/save-profile',
+                              data=json.dumps(profile_data),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 403)
+
+    def test_idor_customer_profile_load_protection(self):
+        """Verify that loading another customer's profile only exposes the name for lookup and hides sensitive fields"""
+        # Create victim profile first
+        with self.client.session_transaction() as sess:
+            sess['customer_phone'] = "2222222222"
+        
+        profile_data = {
+            "phone": "2222222222",
+            "email": "victim@gmail.com",
+            "name": "Victim Name",
+            "addresses": ["Victim Address"],
+            "khata_bal": 500.0
+        }
+        self.client.post('/api/customer/save-profile',
+                         data=json.dumps(profile_data),
+                         content_type='application/json')
+
+        # Log in as attacker (different phone)
+        with self.client.session_transaction() as sess:
+            sess['customer_phone'] = "1111111111"
+
+        with self.client.get('/api/customer/load-profile?phone=2222222222') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertEqual(data['name'], "Victim Name")
+            self.assertNotIn('email', data)
+            self.assertNotIn('addresses', data)
+            self.assertNotIn('khata_bal', data)
+
+    def test_idor_my_orders_protection(self):
+        """Verify that a customer cannot load another customer's order history"""
+        with self.client.session_transaction() as sess:
+            sess['customer_phone'] = "1111111111"
+
+        with self.client.get('/api/my-orders?phone=2222222222') as response:
+            self.assertEqual(response.status_code, 403)
+
+    def test_unhandled_type_conversions_prevention(self):
+        """Verify that invalid types result in 400 Bad Request instead of 500 Server Crash"""
+        # 1. Invalid total in api_place_order
+        order_payload = {
+            "customer_name": "Test User",
+            "customer_phone": "9876543210",
+            "customer_email": "test@gmail.com",
+            "payment_method": "cash",
+            "total": "not-a-number",
+            "items": {"Milk": 1}
+        }
+        with self.client.post('/api/place-order',
+                              data=json.dumps(order_payload),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 400)
+
+        # 2. Invalid days in clear-old-orders (requires owner auth)
+        with self.client.session_transaction() as sess:
+            sess['is_owner'] = True
+        with self.client.post('/api/owner/clear-old-orders',
+                              data=json.dumps({"days": "not-an-integer"}),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 400)
+
+        # 3. Invalid in_stock in update-inventory
+        with self.client.post('/api/owner/update-inventory',
+                              data=json.dumps({"product_id": 1, "in_stock": "not-an-integer"}),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 400)
+
+    def test_security_headers_present(self):
+        """Verify that security headers are injected in HTTP responses"""
+        with self.client.get('/') as response:
+            self.assertEqual(response.headers.get('X-Frame-Options'), 'DENY')
+            self.assertEqual(response.headers.get('X-Content-Type-Options'), 'nosniff')
+            self.assertEqual(response.headers.get('X-XSS-Protection'), '1; mode=block')
+            self.assertEqual(response.headers.get('Referrer-Policy'), 'strict-origin-when-cross-origin')
+
+    def test_session_check_flow(self):
+        """Verify session check endpoint returns correct session details for client verification"""
+        # 1. Initially should be logged out
+        with self.client.get('/api/session-check') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertFalse(data['is_logged_in'])
+            self.assertFalse(data['is_owner'])
+            self.assertIsNone(data['customer_phone'])
+
+        # 2. Log in as owner, check session details
+        with self.client.session_transaction() as sess:
+            sess['is_owner'] = True
+        with self.client.get('/api/session-check') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertTrue(data['is_logged_in'])
+            self.assertTrue(data['is_owner'])
+
+        # 3. Log in as customer, check session details
+        with self.client.session_transaction() as sess:
+            sess.pop('is_owner', None)
+            sess['customer_phone'] = '9876543210'
+        with self.client.get('/api/session-check') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertTrue(data['is_logged_in'])
+            self.assertFalse(data['is_owner'])
+            self.assertEqual(data['customer_phone'], '9876543210')
 
 if __name__ == '__main__':
     unittest.main()

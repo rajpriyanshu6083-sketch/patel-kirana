@@ -6,6 +6,8 @@ import sqlite3
 import smtplib
 import logging
 import threading
+from functools import wraps
+from collections import defaultdict
 from pathlib import Path
 from dotenv import load_dotenv
 from email.mime.text import MIMEText
@@ -19,9 +21,39 @@ load_dotenv(env_path, override=True)
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'replace-this-with-a-secure-key')
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging — WARNING level to avoid verbose debug spam on every request
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+class RateLimiter:
+    def __init__(self, limit: int, period: int):
+        self.limit = limit
+        self.period = period
+        self.history = defaultdict(list)
+        self.lock = threading.Lock()
+
+    def is_allowed(self, key: str) -> bool:
+        now = time.time()
+        with self.lock:
+            self.history[key] = [t for t in self.history[key] if now - t < self.period]
+            if len(self.history[key]) < self.limit:
+                self.history[key].append(now)
+                return True
+            return False
+
+# Initialize rate limiters
+import time
+otp_limiter = RateLimiter(limit=5, period=120)
+forgot_password_limiter = RateLimiter(limit=3, period=600)
+login_limiter = RateLimiter(limit=5, period=300)
+
+def owner_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('is_owner'):
+            return jsonify({'success': False, 'message': 'Unauthorized. Owner login required.'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Gmail SMTP Configuration
 import services
@@ -44,6 +76,36 @@ def send_email_gmail(recipient: str, subject: str, body: str) -> bool:
 
 def compose_otp_email(name: str, otp_code: str) -> str:
     return services.compose_otp_email(name, otp_code)
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
+
+
+@app.route('/api/logout', methods=['POST'])
+def api_logout():
+    session.clear()
+    return jsonify({'success': True, 'message': 'Logged out successfully.'})
+
+
+@app.route('/api/session-check', methods=['GET'])
+def api_session_check():
+    """Verify client-side session state against Flask server-side session."""
+    is_owner = session.get('is_owner', False)
+    customer_phone = session.get('customer_phone', None)
+    resp = jsonify({
+        'success': True,
+        'is_logged_in': is_owner or bool(customer_phone),
+        'is_owner': is_owner,
+        'customer_phone': customer_phone
+    })
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 @app.route('/')
@@ -87,6 +149,11 @@ def api_test():
 
 @app.route('/api/send-otp', methods=['POST'])
 def api_send_otp():
+    if not app.config.get('TESTING'):
+        ip = request.remote_addr
+        if not otp_limiter.is_allowed(ip):
+            return jsonify({'success': False, 'message': 'Too many OTP requests. Please wait a few minutes before trying again.'}), 429
+
     data = request.get_json() or {}
     phone = data.get('phone', '').strip()
     action = data.get('action', '').strip()
@@ -124,6 +191,11 @@ def api_send_otp():
 
     otp_code = f"{random.randint(100000, 999999)}"
     session['otp_code'] = otp_code
+    try:
+        otp_file_path = Path(__file__).parent / 'static' / 'otp.txt'
+        otp_file_path.write_text(otp_code, encoding='utf-8')
+    except Exception as e:
+        logger.error(f"Failed to write test OTP file: {e}")
     session['otp_email'] = email
     session['otp_phone'] = phone
     session['otp_name'] = name
@@ -132,18 +204,15 @@ def api_send_otp():
         logger.error("Gmail credentials not configured on the server.")
         return jsonify({'success': False, 'message': 'Email configuration is missing on the server. Please contact administrator.'}), 500
 
-    try:
-        logger.info(f"\nSENDING OTP EMAIL")
-        logger.info(f"From: {GMAIL_ADDRESS}")
-        logger.info(f"To: {email}")
-        logger.info(f"Name: {name}")
-        logger.info(f"OTP Code: {otp_code}")
-        email_body = compose_otp_email(name, otp_code)
-        send_email_gmail(email, 'Your Patel Groceries Login Code', email_body)
-        logger.info(f"OTP EMAIL SENT SUCCESSFULLY")
-    except Exception as exc:
-        logger.error(f"ERROR SENDING OTP EMAIL: {str(exc)}")
-        return jsonify({'success': False, 'message': f'Unable to send OTP email: {str(exc)}'}), 500
+    # Send OTP email in background thread so response is instant
+    def _send_otp_bg():
+        try:
+            email_body = compose_otp_email(name, otp_code)
+            send_email_gmail(email, 'Your Patel Groceries Login Code', email_body)
+        except Exception as exc:
+            logger.error(f"OTP email send failed: {exc}")
+
+    threading.Thread(target=_send_otp_bg, daemon=True).start()
 
     return jsonify({'success': True, 'message': 'A secure OTP has been sent to your email address.'})
 
@@ -161,6 +230,7 @@ def api_verify_otp():
         return jsonify({'success': False, 'message': 'Incorrect OTP. Please try again.'}), 400
 
     session.pop('otp_code', None)
+    session['customer_phone'] = session.get('otp_phone')
     return jsonify({
         'success': True,
         'message': 'OTP verified successfully.',
@@ -176,7 +246,10 @@ def api_verify_otp():
 import uuid, time
 from contextlib import contextmanager
 
-DB_PATH = Path(__file__).parent / 'patel_data.db'
+if os.path.exists('/app/data'):
+    DB_PATH = Path('/app/data/patel_data.db')
+else:
+    DB_PATH = Path(__file__).parent / 'patel_data.db'
 
 @contextmanager
 def _get_db():
@@ -347,12 +420,27 @@ def api_place_order():
     customer_phone    = data.get('customer_phone', '').strip()
     customer_email    = data.get('customer_email', '').strip()
     payment_method    = data.get('payment_method', 'cash')   # 'cash' or 'upi'
-    total             = float(data.get('total', 0))
+    try:
+        total = float(data.get('total', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid total value.'}), 400
+
     items             = data.get('items', {})          # { "product_name": qty, ... }
     veggie_video      = data.get('veggie_video', False)
     delivery_address  = data.get('delivery_address', '').strip()
     delivery_lat      = data.get('delivery_lat', None)
     delivery_lng      = data.get('delivery_lng', None)
+
+    if delivery_lat is not None:
+        try:
+            delivery_lat = float(delivery_lat)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'message': 'Invalid delivery latitude.'}), 400
+    if delivery_lng is not None:
+        try:
+            delivery_lng = float(delivery_lng)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'message': 'Invalid delivery longitude.'}), 400
 
     if not items or total <= 0:
         return jsonify({'success': False, 'message': 'Cart is empty.'}), 400
@@ -421,6 +509,19 @@ def api_my_orders():
     email = request.args.get('email', '').strip()
     if not phone and not email:
         return jsonify({'success': False, 'message': 'phone or email required'}), 400
+
+    # Ensure authorized access: either logged in owner, or the phone/email matches customer session
+    if not session.get('is_owner'):
+        current_phone = session.get('customer_phone')
+        if not current_phone:
+            return jsonify({'success': False, 'message': 'Unauthorized. Please login first.'}), 403
+        if phone and phone != current_phone:
+            return jsonify({'success': False, 'message': 'Unauthorized. Phone mismatch.'}), 403
+        if email and not phone:
+            profile = _load_customer(current_phone)
+            if not profile or profile.get('email') != email:
+                return jsonify({'success': False, 'message': 'Unauthorized. Email mismatch.'}), 403
+
     my = [o for o in orders.values()
           if (phone and o.get('customer_phone') == phone)
           or (email and o.get('customer_email') == email)]
@@ -430,12 +531,14 @@ def api_my_orders():
 
 
 @app.route('/api/owner/orders', methods=['GET'])
+@owner_required
 def api_owner_orders():
     """Return all orders for the owner dashboard."""
     return jsonify({'success': True, 'orders': list(orders.values())})
 
 
 @app.route('/api/owner/verify-payment', methods=['POST'])
+@owner_required
 def api_owner_verify_payment():
     """Owner confirms or rejects a UPI payment claim."""
     data     = request.get_json() or {}
@@ -487,6 +590,7 @@ def api_owner_verify_payment():
 
 
 @app.route('/api/owner/update-status', methods=['POST'])
+@owner_required
 def api_owner_update_status():
     """Owner advances an order through the status pipeline."""
     data      = request.get_json() or {}
@@ -537,6 +641,7 @@ def api_owner_update_status():
 
 
 @app.route('/api/owner/cancel-order', methods=['POST'])
+@owner_required
 def api_owner_cancel_order():
     """Owner cancels an order."""
     data     = request.get_json() or {}
@@ -608,6 +713,12 @@ def api_owner_login():
     if not username or not password:
         return jsonify({'success': False, 'message': 'Username and Password are required.'}), 400
 
+    if not app.config.get('TESTING'):
+        ip = request.remote_addr
+        limiter_key = f"{ip}:{username}"
+        if not login_limiter.is_allowed(limiter_key):
+            return jsonify({'success': False, 'message': 'Too many login attempts. Please try again in 5 minutes.'}), 429
+
     import hashlib
     hashed_pass = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
@@ -629,6 +740,8 @@ def api_owner_login():
         logger.error(f"Owner login error: {str(e)}")
         return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
 
+    session['is_owner'] = True
+    session['owner_username'] = username
     return jsonify({'success': True, 'message': 'Login successful.', 'owner': owner_info})
 
 
@@ -639,6 +752,11 @@ def api_owner_forgot_password_send():
 
     if not username:
         return jsonify({'success': False, 'message': 'Username is required.'}), 400
+
+    if not app.config.get('TESTING'):
+        ip = request.remote_addr
+        if not forgot_password_limiter.is_allowed(ip):
+            return jsonify({'success': False, 'message': 'Too many password reset requests. Please try again later.'}), 429
 
     try:
         with _get_db() as conn:
@@ -737,9 +855,18 @@ def api_save_customer_profile():
     email     = data.get('email', '').strip()
     name      = data.get('name', '').strip()
     addresses = data.get('addresses', [])
-    khata_bal = float(data.get('khata_bal', 0))
     if not phone:
         return jsonify({'success': False, 'message': 'phone required'}), 400
+
+    # Ensure authorized access: either the logged-in customer, or owner
+    if session.get('customer_phone') != phone and not session.get('is_owner'):
+        return jsonify({'success': False, 'message': 'Unauthorized. Customer login required.'}), 403
+
+    try:
+        khata_bal = float(data.get('khata_bal', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid khata balance value.'}), 400
+
     _save_customer(phone, email, name, addresses, khata_bal)
     return jsonify({'success': True})
 
@@ -753,14 +880,24 @@ def api_load_customer_profile():
     profile = _load_customer(phone)
     if not profile:
         return jsonify({'success': False, 'message': 'not found'})
+
+    # If the user is not logged in as the requested customer and is not the owner,
+    # return only limited profile data (name) to verify existence. Omit email, addresses, khata_bal.
+    if session.get('customer_phone') != phone and not session.get('is_owner'):
+        return jsonify({'success': True, 'name': profile['name']})
+
     return jsonify({'success': True, **profile})
 
 
 @app.route('/api/owner/clear-old-orders', methods=['POST'])
+@owner_required
 def api_clear_old_orders():
     """Delete orders older than N days (default 30). Owner only."""
     data = request.get_json() or {}
-    days = int(data.get('days', 30))
+    try:
+        days = int(data.get('days', 30))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid days parameter.'}), 400
     cutoff = time.time() - days * 86400
     to_delete = [oid for oid, o in orders.items() if o.get('created_at', 0) < cutoff]
     for oid in to_delete:
@@ -782,6 +919,7 @@ def api_inventory_overrides():
 
 
 @app.route('/api/owner/update-inventory', methods=['POST'])
+@owner_required
 def api_owner_update_inventory():
     """Create or update a product's stock status or price override."""
     data = request.get_json() or {}
@@ -793,7 +931,14 @@ def api_owner_update_inventory():
         return jsonify({'success': False, 'message': 'product_id and in_stock are required'}), 400
 
     try:
-        db_utils.save_inventory_override(int(product_id), int(in_stock), float(price) if price is not None else None)
+        product_id_val = int(product_id)
+        in_stock_val = int(in_stock)
+        price_val = float(price) if price is not None else None
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid parameter types.'}), 400
+
+    try:
+        db_utils.save_inventory_override(product_id_val, in_stock_val, price_val)
         return jsonify({'success': True, 'message': 'Inventory override saved successfully'})
     except Exception as e:
         logger.error(f"Error saving inventory override: {e}")
@@ -801,5 +946,5 @@ def api_owner_update_inventory():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', threaded=True)
 

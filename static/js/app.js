@@ -1,3 +1,23 @@
+        // Global fetch interceptor to handle session expiration (401 / 403)
+        (function() {
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                return originalFetch.apply(this, args).then(response => {
+                    if (response.status === 401 || response.status === 403) {
+                        const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+                        if (!url.includes('/api/logout') && !url.includes('/api/owner/login') && !url.includes('/api/verify-otp') && !url.includes('/api/session-check')) {
+                            console.warn("Session expired on server (HTTP " + response.status + "). Logging out...");
+                            // Run logout in next tick to avoid blocking fetch resolves
+                            setTimeout(() => {
+                                if (typeof logout === 'function') logout();
+                            }, 10);
+                        }
+                    }
+                    return response;
+                });
+            };
+        })();
+
         // =============================================
         // CUSTOM ANIMATED TOAST NOTIFICATION SYSTEM
         // =============================================
@@ -149,35 +169,48 @@
         function _restoreSession() {
             const hasSession = _loadState();
 
-            fetch('/api/inventory/overrides')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success && data.overrides) {
-                        data.overrides.forEach(override => {
-                            const product = inventory.find(p => p.id == override.product_id);
-                            if (product) {
-                                product.inStock = override.in_stock === 1;
-                                if (override.price !== null) {
-                                    product.price = override.price;
-                                }
-                            }
-                        });
-                        // If product is out of stock, clean it from cart
-                        data.overrides.forEach(override => {
-                            if (override.in_stock === 0 && cart[override.product_id]) {
-                                delete cart[override.product_id];
-                            }
-                        });
-                        if (hasSession) {
-                            _saveState();
-                        }
+            // Run session-check and inventory overrides IN PARALLEL for faster startup
+            Promise.all([
+                fetch('/api/session-check').then(r => r.json()).catch(() => null),
+                fetch('/api/inventory/overrides').then(r => r.json()).catch(() => null)
+            ]).then(([sess, overrideData]) => {
+                // --- Session validation ---
+                if (hasSession && sess) {
+                    const clientIsOwner = isOwner;
+                    const clientPhone = userProfile.contact;
+                    if (!sess.is_logged_in ||
+                        (clientIsOwner !== sess.is_owner) ||
+                        (!clientIsOwner && clientPhone !== sess.customer_phone)) {
+                        console.warn('Session mismatch detected. Logging out...');
+                        logout();
+                        return;
                     }
-                    continueRestore(hasSession);
-                })
-                .catch(err => {
-                    console.error("Error fetching inventory overrides:", err);
-                    continueRestore(hasSession);
-                });
+                } else if (sess && sess.is_logged_in && !hasSession) {
+                    fetch('/api/logout', { method: 'POST' }).catch(() => {});
+                }
+
+                // --- Apply inventory overrides ---
+                if (overrideData && overrideData.success && overrideData.overrides) {
+                    overrideData.overrides.forEach(override => {
+                        const product = inventory.find(p => p.id == override.product_id);
+                        if (product) {
+                            product.inStock = override.in_stock === 1;
+                            if (override.price !== null) product.price = override.price;
+                        }
+                    });
+                    overrideData.overrides.forEach(override => {
+                        if (override.in_stock === 0 && cart[override.product_id]) {
+                            delete cart[override.product_id];
+                        }
+                    });
+                    if (hasSession) _saveState();
+                }
+
+                continueRestore(hasSession);
+            }).catch(err => {
+                console.error('Session restore failed:', err);
+                continueRestore(hasSession);
+            });
 
             function continueRestore(hasSession) {
                 if (!hasSession) return;
@@ -185,22 +218,41 @@
                 document.getElementById('login-container').classList.add('hidden');
                 setTimeout(() => {
                     document.getElementById('login-container').style.display = 'none';
-                }, 500);
+                }, 800);
                 if (isOwner) {
                     document.getElementById('app-container').style.display = 'none';
-                    document.getElementById('ow-greeting').innerText = `Good day, ${currentUser} \ud83d\udc4b`;
-                    document.getElementById('owner-shell').classList.add('active');
+                    document.getElementById('ow-greeting').innerText = `Good day, ${currentUser} 👋`;
+                    
+                    const ownerShell = document.getElementById('owner-shell');
+                    ownerShell.style.display = 'flex';
+                    ownerShell.style.opacity = '0';
+                    ownerShell.style.transform = 'scale(0.95) translateZ(-30px)';
+                    ownerShell.style.transition = 'opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)';
+                    
                     document.getElementById('ow-prod-count').innerText =
                         `${inventory.length} products in catalogue`;
-                    setTimeout(() => switchOwnerTab('orders'), 50);
+                    setTimeout(() => {
+                        ownerShell.classList.add('active');
+                        ownerShell.style.opacity = '1';
+                        ownerShell.style.transform = 'scale(1) translateZ(0)';
+                        switchOwnerTab('orders');
+                    }, 50);
                 } else {
                     document.getElementById('owner-shell').classList.remove('active');
-                    document.getElementById('app-container').style.display = 'block';
+                    
+                    const appContainer = document.getElementById('app-container');
+                    appContainer.style.display = 'block';
+                    appContainer.style.opacity = '0';
+                    appContainer.style.transform = 'scale(0.95) translateZ(-30px)';
+                    appContainer.style.transition = 'opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)';
+                    
                     document.getElementById('sidebar-name').innerText = userProfile.name;
                     document.getElementById('sidebar-contact').innerText = userProfile.contact;
                     document.getElementById('owner-toggle-btn').style.display = 'none';
                     document.getElementById('header-cart-icon').style.display = 'block';
                     setTimeout(() => {
+                        appContainer.style.opacity = '1';
+                        appContainer.style.transform = 'scale(1) translateZ(0)';
                         filterProducts();
                         updateCartCount();
                         updateCustomerDashboard();
@@ -232,6 +284,7 @@
                 statusDiv.innerHTML = `<span style="color:var(--text-muted);"><i class="fa-solid fa-circle-notch fa-spin"></i> Checking account...</span>`;
  
                 clearTimeout(_lookupTimeout);
+                // 600ms debounce — fewer server hits on slow/mobile typing
                 _lookupTimeout = setTimeout(() => {
                     fetch(`/api/customer/load-profile?phone=${encodeURIComponent(phone)}`)
                         .then(r => r.json())
@@ -332,7 +385,20 @@
                             </button>
                         </h4>
                         <div id="dash-past-orders-list" style="display:flex; flex-direction:column; gap:10px;">
-                            <div style="font-size:0.8rem; color:var(--text-muted); text-align:center; padding:10px;">Loading past orders...</div>
+                            <div style="padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); display: flex; justify-content: space-between; align-items: center;">
+                                <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <div class="skeleton-shimmer" style="width: 50%; height: 12px; border-radius: 4px;"></div>
+                                    <div class="skeleton-shimmer" style="width: 80%; height: 10px; border-radius: 3px;"></div>
+                                </div>
+                                <div class="skeleton-shimmer" style="width: 55px; height: 24px; border-radius: 6px; margin-left: 12px;"></div>
+                            </div>
+                            <div style="padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); display: flex; justify-content: space-between; align-items: center;">
+                                <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                                    <div class="skeleton-shimmer" style="width: 40%; height: 12px; border-radius: 4px;"></div>
+                                    <div class="skeleton-shimmer" style="width: 75%; height: 10px; border-radius: 3px;"></div>
+                                </div>
+                                <div class="skeleton-shimmer" style="width: 55px; height: 24px; border-radius: 6px; margin-left: 12px;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -999,42 +1065,88 @@
                 welcomeText.style.opacity = '1';
             }, 400);
 
-            // Set up app layouts underneath the fading screen
+            // Set up app layouts underneath the fading screen with 3D scale-up transitions
             if (isOwner) {
                 // ── Owner path: show the dedicated owner shell ──
                 document.getElementById('app-container').style.display = 'none';
                 document.getElementById('ow-greeting').innerText = `Good day, ${name} 👋`;
-                document.getElementById('owner-shell').classList.add('active');
+                
+                const ownerShell = document.getElementById('owner-shell');
+                ownerShell.style.display = 'flex';
+                ownerShell.style.opacity = '0';
+                ownerShell.style.transform = 'scale(0.9) translateZ(-50px)';
+                ownerShell.style.transition = 'opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)';
+                
                 document.getElementById('ow-prod-count').innerText =
                     `${inventory.length} products in catalogue`;
                 switchOwnerTab('orders');
+                
+                setTimeout(() => {
+                    ownerShell.classList.add('active');
+                    ownerShell.style.opacity = '1';
+                    ownerShell.style.transform = 'scale(1) translateZ(0)';
+                }, 50);
             } else {
                 // ── Customer path: show the storefront ──
                 document.getElementById('owner-shell').classList.remove('active');
-                document.getElementById('app-container').style.display = 'block';
+                
+                const appContainer = document.getElementById('app-container');
+                appContainer.style.display = 'block';
+                appContainer.style.opacity = '0';
+                appContainer.style.transform = 'scale(0.9) translateZ(-50px)';
+                appContainer.style.transition = 'opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)';
+                
                 document.getElementById('sidebar-name').innerText = name;
                 document.getElementById('sidebar-contact').innerText = contact;
                 document.getElementById('owner-toggle-btn').style.display = 'none';
                 document.getElementById('header-cart-icon').style.display = 'block';
                 filterProducts();
+                
+                setTimeout(() => {
+                    appContainer.style.opacity = '1';
+                    appContainer.style.transform = 'scale(1) translateZ(0)';
+                }, 50);
             }
 
             // Hide the entire login container with a smooth fade-out after checkmark animation completes
+            // Cut total delay from 1800ms → 900ms: animation still plays, just exits sooner
             setTimeout(() => {
-                document.getElementById('login-container').classList.add('hidden');
+                const lc = document.getElementById('login-container');
+                lc.classList.add('hidden');
                 setTimeout(() => {
-                    document.getElementById('login-container').style.display = 'none';
+                    lc.style.display = 'none';
+                    lc.style.visibility = '';   // clear inline visibility so .hidden CSS takes full control
+                    lc.style.opacity = '';      // clear inline opacity — .hidden owns it now
+                    lc.style.transform = '';    // clear inline transform
+                    lc.style.transition = '';   // clear inline transition
                     // Reset overlay state for next logins
                     overlay.style.display = 'none';
                     overlay.style.opacity = '0';
                     welcomeText.style.transform = 'translateY(20px)';
                     welcomeText.style.opacity = '0';
-                }, 500);
-            }, 1800);
+                }, 400);
+            }, 900);
         }
 
         function logout() {
-            // Clear all state
+            // Call backend logout to terminate session
+            fetch('/api/logout', { method: 'POST' }).catch(() => {});
+
+            // Capture active containers
+            const appContainer = document.getElementById('app-container');
+            const ownerShell = document.getElementById('owner-shell');
+            const loginContainer = document.getElementById('login-container');
+
+            const activeContainer = isOwner ? ownerShell : appContainer;
+
+            // Step 1: Smoothly animate the active container out (fade and shrink back in 3D)
+            if (activeContainer) {
+                activeContainer.style.transition = 'opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)';
+                activeContainer.style.opacity = '0';
+                activeContainer.style.transform = 'scale(0.9) translateZ(-50px)';
+            }
+
+            // Step 2: Clear all state
             cart = {};
             addresses = [];
             khataBalance = 0;
@@ -1051,22 +1163,37 @@
             localStorage.removeItem(_LS_KEY);
 
             // Close any open sidebars/modals
-            try { 
-                const sidebar = document.getElementById('sidebar');
-                if (sidebar && sidebar.classList.contains('open')) toggleSidebar(); 
-            } catch (e) { }
+            try { toggleSidebar(false); } catch (e) { }
             try { closeModal(); } catch (e) { }
             try { closeAdminModal(); } catch (e) { }
 
-            // Hide everything, show login
-            const appContainer = document.getElementById('app-container');
-            if (appContainer) appContainer.style.display = 'none';
-            
-            const ownerShell = document.getElementById('owner-shell');
-            if (ownerShell) ownerShell.classList.remove('active');
-            
-            const loginContainer = document.getElementById('login-container');
-            if (loginContainer) loginContainer.style.display = 'flex';
+            // Step 3: Wait for active container fade-out, then reset views and transition login screen back
+            setTimeout(() => {
+                if (appContainer) appContainer.style.display = 'none';
+                if (ownerShell) {
+                    ownerShell.classList.remove('active');
+                    ownerShell.style.display = 'none';
+                }
+
+                if (loginContainer) {
+                    // Fix: remove .hidden FIRST (clears visibility:hidden + pointer-events:none)
+                    // then force a reflow before starting the transition, so the browser
+                    // registers the initial state correctly and the fade-in actually plays.
+                    loginContainer.classList.remove('hidden');
+                    loginContainer.style.display = 'flex';
+                    loginContainer.style.visibility = 'visible';
+                    loginContainer.style.opacity = '0';
+                    loginContainer.style.transform = 'scale(1.05) translateZ(30px)';
+                    loginContainer.style.transition = 'none';
+
+                    // Force reflow — without this the browser skips the initial state
+                    void loginContainer.offsetHeight;
+
+                    loginContainer.style.transition = 'opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)';
+                    loginContainer.style.opacity = '1';
+                    loginContainer.style.transform = 'scale(1) translateZ(0)';
+                }
+            }, 500);
 
             // Reset login form fields
             ['login-name', 'login-email', 'login-phone', 'login-otp',
@@ -1153,7 +1280,28 @@
         function renderOwnerOrders() {
             const list = document.getElementById('ow-orders-list');
             const statsEl = document.getElementById('ow-order-stats');
-            list.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:30px;">Loading orders...</div>';
+            let orderSkeleton = '';
+            for (let i = 0; i < 3; i++) {
+                orderSkeleton += `
+                    <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="skeleton-shimmer" style="width: 120px; height: 14px; border-radius: 4px;"></div>
+                            <div class="skeleton-shimmer" style="width: 70px; height: 18px; border-radius: 9px;"></div>
+                        </div>
+                        <div class="skeleton-shimmer" style="width: 80%; height: 12px; border-radius: 4px;"></div>
+                        <div class="skeleton-shimmer" style="width: 90%; height: 12px; border-radius: 4px;"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                            <div class="skeleton-shimmer" style="width: 60px; height: 16px; border-radius: 4px;"></div>
+                            <div class="skeleton-shimmer" style="width: 50px; height: 12px; border-radius: 3px;"></div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 8px;">
+                            <div class="skeleton-shimmer" style="flex: 1; height: 32px; border-radius: 6px;"></div>
+                            <div class="skeleton-shimmer" style="flex: 1; height: 32px; border-radius: 6px;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+            list.innerHTML = orderSkeleton;
 
             fetch('/api/owner/orders')
                 .then(r => r.json())
@@ -1269,6 +1417,11 @@
                         </div>
                     </div>`;
                     });
+                    // Apply 3D tilt
+                    if (typeof applyGeneric3DTilt === 'function') {
+                        applyGeneric3DTilt('.ow-stat-card', 6);
+                        applyGeneric3DTilt('.order-card', 5);
+                    }
                 })
                 .catch(() => {
                     list.innerHTML = '<div style="text-align:center;color:#ef4444;padding:30px;">❌ Could not connect to server.</div>';
@@ -1370,6 +1523,10 @@
                     </div>
                 </div>`;
             });
+            // Apply 3D tilt
+            if (typeof applyGeneric3DTilt === 'function') {
+                applyGeneric3DTilt('.ow-product-row', 3);
+            }
         }
 
         function owChangeQty(id, delta) {
@@ -1481,13 +1638,32 @@
                     </div>`;
                 });
             }
+            // Apply 3D tilt
+            if (typeof applyGeneric3DTilt === 'function') {
+                applyGeneric3DTilt('.ow-stat-card', 6);
+            }
         }
 
         // ── Digital Ledger (Khata) ────────────────────────────────
         function renderOwnerLedger() {
             const list = document.getElementById('ow-ledger-list');
             const statsEl = document.getElementById('ow-ledger-stats');
-            list.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:30px;">Loading khata...</div>';
+            let ledgerSkeleton = '';
+            for (let i = 0; i < 4; i++) {
+                ledgerSkeleton += `
+                    <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                            <div class="skeleton-shimmer" style="width: 130px; height: 14px; border-radius: 4px;"></div>
+                            <div class="skeleton-shimmer" style="width: 95px; height: 10px; border-radius: 3px;"></div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+                            <div class="skeleton-shimmer" style="width: 50px; height: 16px; border-radius: 4px;"></div>
+                            <div class="skeleton-shimmer" style="width: 70px; height: 24px; border-radius: 6px;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+            list.innerHTML = ledgerSkeleton;
 
             fetch('/api/owner/orders')
                 .then(r => r.json())
@@ -1573,7 +1749,7 @@
                             }).join('');
 
                         return `
-                    <div style="background:#fff;border:2px solid ${c.total > 0 ? '#c4b5fd' : '#e2e8f0'};border-radius:16px;margin-bottom:16px;overflow:hidden;box-shadow:0 2px 8px rgba(124,58,237,0.07);">
+                    <div class="ow-ledger-card" style="background:#fff;border:2px solid ${c.total > 0 ? '#c4b5fd' : '#e2e8f0'};border-radius:16px;margin-bottom:16px;overflow:hidden;box-shadow:0 2px 8px rgba(124,58,237,0.07);">
                         <!-- Customer header -->
                         <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"
                              style="padding:14px 16px;cursor:pointer;background:${c.total > 0 ? 'linear-gradient(135deg,#fdf4ff,#f3e8ff)' : '#f8fafc'};">
@@ -1603,6 +1779,11 @@
                         </div>
                     </div>`;
                     }).join('');
+                    // Apply 3D tilt
+                    if (typeof applyGeneric3DTilt === 'function') {
+                        applyGeneric3DTilt('.ow-stat-card', 6);
+                        applyGeneric3DTilt('.ow-ledger-card', 4);
+                    }
                 })
                 .catch(() => {
                     list.innerHTML = '<div style="text-align:center;color:#ef4444;padding:30px;">\u274c Could not connect to server.</div>';
@@ -1765,18 +1946,40 @@
         // ==========================================
         // SIDEBAR NAV TOGGLE
         // ==========================================
-        function toggleSidebar() {
+        function toggleSidebar(forceState) {
             const sidebar = document.getElementById('sidebar');
             const overlay = document.getElementById('sidebar-overlay');
-            sidebar.classList.toggle('open');
-            overlay.classList.toggle('active');
+            if (!sidebar || !overlay) return;
+
+            const show = (typeof forceState === 'boolean') ? forceState : !sidebar.classList.contains('open');
+
+            if (show) {
+                sidebar.classList.add('open');
+                overlay.classList.add('active');
+                document.body.classList.add('sidebar-open');
+
+                // Stagger sidebar items in one by one
+                const items = sidebar.querySelectorAll('.sidebar-item, .sidebar-divider');
+                items.forEach(function(el) { el.classList.remove('sb-visible'); });
+                items.forEach(function(el, i) {
+                    setTimeout(function() { el.classList.add('sb-visible'); }, 80 + i * 60);
+                });
+            } else {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+                document.body.classList.remove('sidebar-open');
+
+                // Reset so items re-animate on next open
+                const items = sidebar.querySelectorAll('.sidebar-item, .sidebar-divider');
+                items.forEach(function(el) { el.classList.remove('sb-visible'); });
+            }
         }
 
         // ==========================================
         // INTERACTIVE SCREEN CONTROLLERS
         // ==========================================
         function openFeatureScreen(feature) {
-            if (document.getElementById('sidebar').classList.contains('open')) toggleSidebar();
+            toggleSidebar(false);
 
             const modalTitle = document.getElementById('modal-title');
             const modalBody = document.getElementById('modal-body');
@@ -1803,9 +2006,23 @@
             }
             else if (feature === 'orders') {
                 modalTitle.innerText = "My Orders";
-                htmlContent = `<div id="my-orders-container" style="min-height:100px;">
-                    <div style="text-align:center;color:#94a3b8;padding:30px;">Loading your orders...</div>
-                </div>`;
+                let modalSkeletons = '';
+                for (let i = 0; i < 3; i++) {
+                    modalSkeletons += `
+                        <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div class="skeleton-shimmer" style="width: 100px; height: 14px; border-radius: 4px;"></div>
+                                <div class="skeleton-shimmer" style="width: 80px; height: 18px; border-radius: 4px;"></div>
+                            </div>
+                            <div class="skeleton-shimmer" style="width: 90%; height: 12px; border-radius: 4px;"></div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                                <div class="skeleton-shimmer" style="width: 50px; height: 16px; border-radius: 4px;"></div>
+                                <div class="skeleton-shimmer" style="width: 80px; height: 28px; border-radius: 6px;"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+                htmlContent = `<div id="my-orders-container" style="min-height:100px;">${modalSkeletons}</div>`;
 
                 // Fetch after DOM is injected (setTimeout 0 ensures element exists)
                 setTimeout(() => {
@@ -2552,6 +2769,24 @@
                 });
         }
 
+        window.copyUpiIdToClipboard = function(text, btnId) {
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    const originalHtml = btn.innerHTML;
+                    btn.innerHTML = `<i class="fa-solid fa-check"></i> Copied!`;
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.innerHTML = originalHtml;
+                        btn.classList.remove('copied');
+                    }, 2000);
+                }
+            }).catch(err => {
+                console.error("Failed to copy UPI ID: ", err);
+                alert("Could not copy automatically. UPI ID is: " + text);
+            });
+        };
+
         function showUpiQrScreen() {
             const modalBody = document.getElementById('modal-body');
             const modalTitle = document.getElementById('modal-title');
@@ -2570,8 +2805,91 @@
                     const upiName = config.name || 'Priyanshu Raj';
                     const merchantName = upiName.toUpperCase();
 
-                    const upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${_payOrderTotal}&cu=INR&tn=PatelGroceriesOrder`;
+                    const os = (function() {
+                        const ua = navigator.userAgent || navigator.vendor || window.opera;
+                        if (/android/i.test(ua)) return 'android';
+                        if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) return 'ios';
+                        return 'desktop';
+                    })();
+
+                    const upiParams = `pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${_payOrderTotal}&cu=INR&tn=PatelGroceriesOrder`;
+                    const upiUrl = `upi://pay?${upiParams}`;
                     const qrCodeSrc = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiUrl)}`;
+
+                    // App deep links
+                    let gpayUrl = upiUrl;
+                    let phonepeUrl = upiUrl;
+                    let paytmUrl = upiUrl;
+                    let bhimUrl = upiUrl;
+
+                    if (os === 'android') {
+                        gpayUrl = `intent://pay?${upiParams}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
+                        phonepeUrl = `intent://pay?${upiParams}#Intent;scheme=upi;package=com.phonepe.app;end`;
+                        paytmUrl = `intent://pay?${upiParams}#Intent;scheme=upi;package=net.one97.paytm;end`;
+                        bhimUrl = `intent://pay?${upiParams}#Intent;scheme=in.org.npci.upiapp;end`;
+                    } else if (os === 'ios') {
+                        gpayUrl = `gpay://upi/pay?${upiParams}`;
+                        phonepeUrl = `phonepe://upi/pay?${upiParams}`;
+                        paytmUrl = `paytmmp://upi/pay?${upiParams}`;
+                        bhimUrl = `bhim://upi/pay?${upiParams}`;
+                    }
+
+                    // Build platform specific HTML
+                    let platformHtml = '';
+                    if (os === 'desktop') {
+                        platformHtml = `
+                            <div class="upi-desktop-info-card">
+                                <p>🖥️ <b>Paying from Desktop?</b> Scan the QR code above with Google Pay, PhonePe, Paytm, or BHIM on your phone.</p>
+                                <div class="upi-instruction-title" style="margin-top: 10px;">Or Copy UPI ID:</div>
+                                <div class="upi-copy-container">
+                                    <span class="upi-copy-text">${upiId}</span>
+                                    <button id="desktop-copy-btn" class="upi-copy-btn" onclick="copyUpiIdToClipboard('${upiId}', 'desktop-copy-btn')">
+                                        <i class="fa-solid fa-copy"></i> Copy ID
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="upi-or-divider">OR</div>
+                            <a href="${upiUrl}" style="display:block;background:linear-gradient(135deg,#374151,#1f2937);color:white;text-decoration:none;padding:14px;border-radius:12px;font-weight:800;font-size:0.95rem;margin-bottom:12px;box-shadow:0 4px 14px rgba(0,0,0,0.15);">
+                                📲 Open Default UPI App (Desktop)
+                            </a>
+                        `;
+                    } else {
+                        // Mobile (Android / iOS)
+                        platformHtml = `
+                            <div class="upi-platform-container">
+                                <div class="upi-instruction-title">⚡ Pay Directly via Installed App</div>
+                                <div class="upi-app-grid">
+                                    <a href="${gpayUrl}" class="upi-app-btn gpay">
+                                        <i class="fa-brands fa-google-pay" style="font-size: 1.4rem;"></i> GPay
+                                    </a>
+                                    <a href="${phonepeUrl}" class="upi-app-btn phonepe">
+                                        <i class="fa-solid fa-mobile-screen-button"></i> PhonePe
+                                    </a>
+                                    <a href="${paytmUrl}" class="upi-app-btn paytm">
+                                        <i class="fa-solid fa-wallet"></i> Paytm
+                                    </a>
+                                    <a href="${bhimUrl}" class="upi-app-btn bhim">
+                                        <i class="fa-solid fa-bolt"></i> BHIM
+                                    </a>
+                                    <a href="${upiUrl}" class="upi-app-btn generic">
+                                        📲 Other / All UPI Apps
+                                    </a>
+                                </div>
+                                
+                                <div class="upi-or-divider">OR</div>
+                                
+                                <div class="upi-desktop-info-card" style="padding: 10px; margin-bottom: 0;">
+                                    <p style="margin-bottom: 6px; font-size: 0.8rem; text-align: center;">Need to copy the UPI ID?</p>
+                                    <div class="upi-copy-container" style="margin-top: 0;">
+                                        <span class="upi-copy-text" style="font-size: 0.8rem;">${upiId}</span>
+                                        <button id="mobile-copy-btn" class="upi-copy-btn" onclick="copyUpiIdToClipboard('${upiId}', 'mobile-copy-btn')">
+                                            <i class="fa-solid fa-copy"></i> Copy
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
 
                     modalBody.innerHTML = `
                     <div class="upi-qr-screen">
@@ -2587,16 +2905,13 @@
 
                         <div class="upi-amount-badge">₹${_payOrderTotal}</div>
                         <div class="upi-scan-hint">
-                            Scan with any UPI app · PhonePe · Google Pay · Paytm<br>
-                            <b>${merchantName}</b><br>
-                            <span style="font-size:0.75rem; color:var(--text-muted);">${upiId}</span>
+                            Scan with any UPI app · PhonePe · Google Pay · Paytm · BHIM<br>
+                            <b>${merchantName}</b>
                         </div>
 
-                        <a href="${upiUrl}" style="display:block;background:linear-gradient(135deg,#5f259f,#9333ea);color:white;text-decoration:none;padding:14px;border-radius:12px;font-weight:800;font-size:0.95rem;margin-bottom:12px;box-shadow:0 4px 14px rgba(95,37,159,0.3);">
-                            📲 Open UPI App to Pay
-                        </a>
+                        ${platformHtml}
 
-                        <button class="upi-paid-btn" onclick="claimUpiPayment()">
+                        <button class="upi-paid-btn" onclick="claimUpiPayment()" style="margin-top: 10px;">
                             ✅ I've Paid — Notify Owner
                         </button>
                         <button class="upi-back-link" onclick="openPaymentSelection()">← Change payment method</button>
@@ -2831,6 +3146,8 @@
                 const displayName = cat.name;
                 container.innerHTML += `<div class="category-card ${isActive}" onclick="toggleCategory('${cat.name}')"><div class="category-icon">${cat.icon}</div><span class="category-name">${displayName}</span></div>`;
             });
+            // Apply 3D tilt
+            if (typeof applyGeneric3DTilt === 'function') applyGeneric3DTilt('.category-card', 6);
         }
 
         function renderKits() {
@@ -2852,6 +3169,8 @@
 
                 container.innerHTML += `<div class="kit-card"><div class="kit-header"><div class="kit-title">${name}</div><div class="kit-icon">${kit.icon}</div></div><div class="kit-desc">${desc}</div><div class="kit-footer"><div style="font-weight: 700; font-size: 0.9rem;">₹${kitPrice}</div><button class="kit-btn" onclick="addKitToCart('${kit.id}')">${btnText}</button></div></div>`;
             });
+            // Apply 3D tilt
+            if (typeof applyGeneric3DTilt === 'function') applyGeneric3DTilt('.kit-card', 8);
         }
 
         function toggleCategory(categoryName) {
@@ -2921,6 +3240,8 @@
                         </div>
                     </div>`;
             });
+            // Apply 3D tilt
+            if (typeof applyGeneric3DTilt === 'function') applyGeneric3DTilt('.product-card', 6);
         }
 
         function updateQuantity(productId, change) {
@@ -3521,9 +3842,9 @@
             document.getElementById('gmap-tab-map').classList.toggle('active', isMap);
             document.getElementById('gmap-tab-manual').classList.toggle('active', !isMap);
             document.getElementById('gmap-map-section').style.display = isMap ? '' : 'none';
-            document.getElementById('gmap-manual-section').style.display = isMap ? 'none' : '';
+            document.getElementById('gmap-manual-section').style.display = isMap ? 'none' : 'block';
             document.getElementById('gmap-bottom-map').style.display = isMap ? '' : 'none';
-            document.getElementById('gmap-bottom-manual').style.display = isMap ? 'none' : '';
+            document.getElementById('gmap-bottom-manual').style.display = isMap ? 'none' : 'block';
             if (isMap && _mapPickerMap) setTimeout(() => _mapPickerMap.invalidateSize(), 100);
         }
 
@@ -3627,3 +3948,85 @@
 
         // Restore session after everything is fully loaded and declared
         _restoreSession();
+
+        // =============================================
+        // THREE.JS 3D BACKGROUND ENGINE (Disabled)
+        // =============================================
+        function init3DBackground() {
+            // Background 3D effects disabled in favor of liquid glass CSS background
+        }
+
+        // =============================================
+        // DYNAMIC 3D CARD TILT ENGINE
+        // =============================================
+        function init3DTilt() {
+            const card = document.querySelector('.login-card');
+            if (!card) return;
+
+            card.addEventListener('pointermove', (e) => {
+                const rect = card.getBoundingClientRect();
+                
+                // Centered coordinates relative to card
+                const x = (e.clientX - rect.left) / rect.width - 0.5;
+                const y = (e.clientY - rect.top) / rect.height - 0.5;
+
+                // Max 22 degrees rotation
+                const tiltX = -y * 22;
+                const tiltY = x * 22;
+
+                card.style.transform = `perspective(1500px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateY(-2px)`;
+                
+                // Shift shadow dynamically for realism
+                const shadowX = -x * 25;
+                const shadowY = -y * 25;
+                card.style.boxShadow = `
+                    ${shadowX}px ${shadowY}px 45px rgba(0, 0, 0, 0.55),
+                    0 30px 60px rgba(0, 0, 0, 0.6),
+                    inset 0 1px 1px rgba(255, 255, 255, 0.15),
+                    0 0 60px rgba(34, 197, 94, 0.15)
+                `;
+            });
+
+            card.addEventListener('pointerleave', () => {
+                card.style.transform = 'perspective(1500px) rotateX(0deg) rotateY(0deg) translateZ(0)';
+                card.style.boxShadow = `
+                    0 4px 30px rgba(0, 0, 0, 0.4),
+                    0 30px 60px rgba(0, 0, 0, 0.6),
+                    inset 0 1px 1px rgba(255, 255, 255, 0.1),
+                    0 0 60px rgba(34, 197, 94, 0.1)
+                `;
+            });
+        }
+
+        // Generic 3D tilt applicator for lists/cards
+        function applyGeneric3DTilt(selector, maxTilt = 8) {
+            document.querySelectorAll(selector).forEach(element => {
+                if (element.dataset.tiltInitialized) return;
+                element.dataset.tiltInitialized = "true";
+                
+                element.style.transformStyle = 'preserve-3d';
+                element.style.perspective = '1000px';
+                element.style.transition = 'transform 0.15s ease-out';
+                
+                element.addEventListener('pointermove', (e) => {
+                    const rect = element.getBoundingClientRect();
+                    const x = (e.clientX - rect.left) / rect.width - 0.5;
+                    const y = (e.clientY - rect.top) / rect.height - 0.5;
+                    const tiltX = -y * maxTilt * 2;
+                    const tiltY = x * maxTilt * 2;
+                    element.style.transform = `perspective(1000px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateY(-2px)`;
+                });
+
+                element.addEventListener('pointerleave', () => {
+                    element.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(0)';
+                });
+            });
+        }
+
+        // Initialize visual features
+        init3DBackground();
+        init3DTilt();
+        setTimeout(() => {
+            applyGeneric3DTilt('.gacha-banner', 5);
+            applyGeneric3DTilt('.parchi-banner', 5);
+        }, 100);

@@ -3,7 +3,9 @@ venv/
 __pycache__/
 *.pyc
 .env
-patel_data.db
+*.db
+*.db-wal
+*.db-journal
 .pytest_cache/
 .agent/
 .vscode/
