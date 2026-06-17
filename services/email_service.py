@@ -12,22 +12,93 @@ logger = logging.getLogger(__name__)
 # Gmail SMTP Configuration
 GMAIL_ADDRESS = os.environ.get('GMAIL_ADDRESS')
 GMAIL_PASSWORD = os.environ.get('GMAIL_PASSWORD')
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
+
+def send_via_brevo(api_key: str, sender_email: str, recipient: str, subject: str, body: str) -> bool:
+    import urllib.request
+    import json
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"name": "Patel Groceries", "email": sender_email},
+        "to": [{"email": recipient}],
+        "subject": subject,
+        "textContent": body
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode('utf-8'),
+        headers=headers,
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=8) as response:
+        res = json.loads(response.read().decode('utf-8'))
+        logger.info(f"Email sent via Brevo to {recipient}: {res}")
+        return True
+
+def send_via_resend(api_key: str, recipient: str, subject: str, body: str) -> bool:
+    import urllib.request
+    import json
+    url = "https://api.resend.com/emails"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "from": "Patel Groceries <onboarding@resend.dev>",
+        "to": [recipient],
+        "subject": subject,
+        "text": body
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode('utf-8'),
+        headers=headers,
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=8) as response:
+        res = json.loads(response.read().decode('utf-8'))
+        logger.info(f"Email sent via Resend to {recipient}: {res}")
+        return True
 
 def send_email_gmail(recipient: str, subject: str, body: str) -> bool:
-    """Send email using Gmail SMTP"""
+    """Send email using HTTP REST API (Brevo/Resend) or fallback to Gmail SMTP"""
     logger.debug(f"Starting email send to {recipient}")
     
     # Reload from env in case they are updated dynamically
     gmail_addr = os.environ.get('GMAIL_ADDRESS') or GMAIL_ADDRESS
     gmail_pwd = os.environ.get('GMAIL_PASSWORD') or GMAIL_PASSWORD
+    brevo_key = os.environ.get('BREVO_API_KEY') or BREVO_API_KEY
+    resend_key = os.environ.get('RESEND_API_KEY') or RESEND_API_KEY
 
+    # 1. Try Brevo HTTP REST API (preferred on cloud environments like Railway where SMTP is blocked)
+    if brevo_key:
+        try:
+            logger.debug("Attempting to send email via Brevo HTTP API...")
+            sender = gmail_addr or "rajpriyanshu6083@gmail.com"
+            return send_via_brevo(brevo_key, sender, recipient, subject, body)
+        except Exception as e:
+            logger.error(f"Brevo HTTP API sending failed: {str(e)}. Falling back...")
+
+    # 2. Try Resend HTTP REST API
+    if resend_key:
+        try:
+            logger.debug("Attempting to send email via Resend HTTP API...")
+            return send_via_resend(resend_key, recipient, subject, body)
+        except Exception as e:
+            logger.error(f"Resend HTTP API sending failed: {str(e)}. Falling back...")
+
+    # 3. Fallback to standard Gmail SMTP
     if not gmail_addr or not gmail_pwd:
         raise RuntimeError(
-            'Gmail credentials not configured.\n'
-            'Set environment variables:\n'
-            '  GMAIL_ADDRESS=your-email@gmail.com\n'
-            '  GMAIL_PASSWORD=your-app-specific-password\n\n'
-            'Note: Use an app-specific password from myaccount.google.com/apppasswords'
+            'No email configuration found. Please set BREVO_API_KEY or RESEND_API_KEY '
+            'for HTTP sending (recommended for cloud/Railway), or set GMAIL_ADDRESS and '
+            'GMAIL_PASSWORD for local SMTP sending.'
         )
     
     try:
@@ -63,6 +134,7 @@ def send_email_gmail(recipient: str, subject: str, body: str) -> bool:
         raise RuntimeError(f'SMTP error: {str(e)}')
     except Exception as e:
         logger.error(f"Email sending failed: {str(e)}")
+
         raise RuntimeError(f'Email sending failed: {str(e)}')
 
 def compose_otp_email(name: str, otp_code: str) -> str:
