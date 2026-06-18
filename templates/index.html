@@ -4149,11 +4149,16 @@
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2) !important;
         }
 
-        .menu-icon {
-            color: #f1f5f9 !important;
+        .menu-icon,
+        .menu-icon i,
+        header .menu-icon,
+        #app-container header .menu-icon,
+        #app-container header .menu-icon i {
+            color: #ffffff !important;
         }
 
-        .menu-icon:hover {
+        .menu-icon:hover,
+        .menu-icon:hover i {
             color: #4ade80 !important;
         }
 
@@ -5039,10 +5044,10 @@
         <header>
             <div class="header-top">
                 <div class="brand-wrapper">
-                    <!-- HAMBURGER MENU BUTTON — pure CSS lines, no icon font needed -->
-                    <div onclick="toggleSidebar()" style="
-                        background: rgba(74, 222, 128, 0.2);
-                        border: 1.5px solid rgba(74, 222, 128, 0.5);
+                    <!-- HAMBURGER MENU BUTTON — pure CSS 3 lines, guaranteed visible -->
+                    <div class="menu-icon" onclick="toggleSidebar()" style="
+                        background: rgba(74, 222, 128, 0.18);
+                        border: 1.5px solid rgba(74, 222, 128, 0.45);
                         border-radius: 8px;
                         padding: 8px 10px;
                         cursor: pointer;
@@ -5053,11 +5058,11 @@
                         width: 40px;
                         height: 38px;
                         flex-shrink: 0;
-                        box-shadow: 0 2px 8px rgba(74,222,128,0.15);
+                        box-shadow: 0 2px 8px rgba(74,222,128,0.12);
                     ">
-                        <div style="width:18px;height:2.5px;background:#ffffff;border-radius:2px;"></div>
-                        <div style="width:18px;height:2.5px;background:#ffffff;border-radius:2px;"></div>
-                        <div style="width:14px;height:2.5px;background:#ffffff;border-radius:2px;"></div>
+                        <div style="width:18px;height:2.5px;background:#ffffff;border-radius:2px;flex-shrink:0;"></div>
+                        <div style="width:18px;height:2.5px;background:#ffffff;border-radius:2px;flex-shrink:0;"></div>
+                        <div style="width:13px;height:2.5px;background:#ffffff;border-radius:2px;flex-shrink:0;"></div>
                     </div>
                     <img src="/static/logo.png" alt="Patel Groceries Logo"
                         style="width: 36px; height: 36px; object-fit: contain; border-radius: 6px;">
