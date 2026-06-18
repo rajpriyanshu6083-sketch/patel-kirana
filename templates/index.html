@@ -5039,20 +5039,25 @@
         <header>
             <div class="header-top">
                 <div class="brand-wrapper">
-                    <!-- HAMBURGER MENU BUTTON -->
-                    <div class="menu-icon" onclick="toggleSidebar()" style="
-                        color: #ffffff !important;
-                        background: rgba(74, 222, 128, 0.15);
-                        border: 1px solid rgba(74, 222, 128, 0.3);
+                    <!-- HAMBURGER MENU BUTTON — pure CSS lines, no icon font needed -->
+                    <div onclick="toggleSidebar()" style="
+                        background: rgba(74, 222, 128, 0.2);
+                        border: 1.5px solid rgba(74, 222, 128, 0.5);
                         border-radius: 8px;
-                        padding: 7px 9px;
+                        padding: 8px 10px;
                         cursor: pointer;
                         display: flex;
-                        align-items: center;
-                        font-size: 1.2rem;
-                        transition: background 0.2s;
+                        flex-direction: column;
+                        justify-content: center;
+                        gap: 5px;
+                        width: 40px;
+                        height: 38px;
+                        flex-shrink: 0;
+                        box-shadow: 0 2px 8px rgba(74,222,128,0.15);
                     ">
-                        <i class="fa-solid fa-bars" style="color: #ffffff !important;"></i>
+                        <div style="width:18px;height:2.5px;background:#ffffff;border-radius:2px;"></div>
+                        <div style="width:18px;height:2.5px;background:#ffffff;border-radius:2px;"></div>
+                        <div style="width:14px;height:2.5px;background:#ffffff;border-radius:2px;"></div>
                     </div>
                     <img src="/static/logo.png" alt="Patel Groceries Logo"
                         style="width: 36px; height: 36px; object-fit: contain; border-radius: 6px;">
