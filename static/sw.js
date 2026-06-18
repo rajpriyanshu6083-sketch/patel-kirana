@@ -1,6 +1,5 @@
-const CACHE_NAME = 'patel-kirana-cache-v2';
+const CACHE_NAME = 'patel-kirana-cache-v3';
 const ASSETS_TO_CACHE = [
-    '/',
     '/static/icons/icon-192.png',
     '/static/icons/icon-512.png',
     '/static/icons/apple-touch-icon.png'
@@ -24,6 +23,15 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+    const url = new URL(event.request.url);
+
+    // Never cache API calls — always go to network so session-check is always fresh
+    if (url.pathname.startsWith('/api/') || url.pathname === '/') {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
+    // For static assets: network first, fall back to cache
     event.respondWith(
         fetch(event.request)
             .then(response => {
@@ -33,6 +41,6 @@ self.addEventListener('fetch', event => {
                 }
                 return response;
             })
-            .catch(() => caches.match(event.request).then(cachedResponse => cachedResponse || caches.match('/')))
+            .catch(() => caches.match(event.request))
     );
 });

@@ -169,11 +169,42 @@
         function _restoreSession() {
             const hasSession = _loadState();
 
+            // If no local session, nothing to restore — login screen stays visible
+            if (!hasSession) {
+                // Still load inventory overrides for the product list
+                fetch('/api/inventory/overrides').then(r => r.json()).then(overrideData => {
+                    if (overrideData && overrideData.success && overrideData.overrides) {
+                        overrideData.overrides.forEach(override => {
+                            const product = inventory.find(p => p.id == override.product_id);
+                            if (product) {
+                                product.inStock = override.in_stock === 1;
+                                if (override.price !== null) product.price = override.price;
+                            }
+                        });
+                    }
+                }).catch(() => {});
+                return;
+            }
+
+            // We have local session data — validate with server before showing app
+            // Show a loading indicator so user knows something is happening
+            const loginContainer = document.getElementById('login-container');
+            if (loginContainer) {
+                loginContainer.style.opacity = '0.4';
+                loginContainer.style.pointerEvents = 'none';
+            }
+
             // Run session-check and inventory overrides IN PARALLEL for faster startup
             Promise.all([
                 fetch('/api/session-check').then(r => r.json()).catch(() => null),
                 fetch('/api/inventory/overrides').then(r => r.json()).catch(() => null)
             ]).then(([sess, overrideData]) => {
+                // Restore login container opacity
+                if (loginContainer) {
+                    loginContainer.style.opacity = '';
+                    loginContainer.style.pointerEvents = '';
+                }
+
                 // --- Session validation ---
                 if (hasSession && sess) {
                     const clientIsOwner = isOwner;
@@ -181,8 +212,27 @@
                     if (!sess.is_logged_in ||
                         (clientIsOwner !== sess.is_owner) ||
                         (!clientIsOwner && clientPhone !== sess.customer_phone)) {
-                        console.warn('Session mismatch detected. Logging out...');
-                        logout();
+                        console.warn('Session mismatch detected. Clearing local state and showing login...');
+                        // Clear local state without running the full logout animation
+                        // (nothing is shown yet, so we just reset state and show login)
+                        cart = {};
+                        addresses = [];
+                        khataBalance = 0;
+                        userProfile = { name: '', contact: '', email: '' };
+                        currentUser = '';
+                        isOwner = false;
+                        localStorage.removeItem('patel_groceries_session');
+                        localStorage.removeItem(_LS_KEY);
+                        // Call backend logout to clear server session too
+                        fetch('/api/logout', { method: 'POST' }).catch(() => {});
+                        // Show login screen cleanly (it's already visible, just ensure it's visible)
+                        if (loginContainer) {
+                            loginContainer.classList.remove('hidden');
+                            loginContainer.style.display = 'flex';
+                            loginContainer.style.visibility = 'visible';
+                            loginContainer.style.opacity = '1';
+                            loginContainer.style.pointerEvents = '';
+                        }
                         return;
                     }
                 } else if (sess && sess.is_logged_in && !hasSession) {
@@ -209,6 +259,11 @@
                 continueRestore(hasSession);
             }).catch(err => {
                 console.error('Session restore failed:', err);
+                // On network error, restore from localStorage without server validation
+                if (loginContainer) {
+                    loginContainer.style.opacity = '';
+                    loginContainer.style.pointerEvents = '';
+                }
                 continueRestore(hasSession);
             });
 
