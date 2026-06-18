@@ -1,4 +1,4 @@
-const CACHE_NAME = 'patel-kirana-cache-v3';
+const CACHE_NAME = 'patel-kirana-cache-v4';
 const ASSETS_TO_CACHE = [
     '/static/icons/icon-192.png',
     '/static/icons/icon-512.png',

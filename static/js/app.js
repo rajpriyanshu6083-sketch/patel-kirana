@@ -4001,6 +4001,21 @@
             openMapPicker();
         }
 
+        // ALWAYS ensure login screen is visible first before any async work
+        // This prevents the blank dark screen while session-check is in flight
+        (function() {
+            const lc = document.getElementById('login-container');
+            if (lc) {
+                lc.classList.remove('hidden');
+                lc.style.display = 'flex';
+                lc.style.visibility = 'visible';
+                lc.style.opacity = '1';
+                lc.style.pointerEvents = 'auto';
+                lc.style.transform = '';
+                lc.style.transition = '';
+            }
+        })();
+
         // Restore session after everything is fully loaded and declared
         _restoreSession();
 
