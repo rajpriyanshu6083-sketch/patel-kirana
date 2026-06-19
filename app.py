@@ -112,7 +112,7 @@ def api_session_check():
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return render_template('index.html', app_version=APP_VERSION)
 
 
 @app.route('/sw.js')
