@@ -71,21 +71,47 @@
             toast.offsetHeight;
             toast.classList.add('show');
 
-            // Auto dismiss timer
-            const dismissTimer = setTimeout(() => {
-                toast.classList.add('hide');
-                setTimeout(() => {
-                    toast.remove();
-                }, 400);
-            }, duration);
+            // Auto dismiss timer tracking remaining time
+            const startTime = Date.now();
+            let remainingTime = duration;
+            let dismissTimer;
+            let paused = false;
+            let pauseTime;
+
+            const startDismissTimer = (timeRemaining) => {
+                dismissTimer = setTimeout(() => {
+                    toast.classList.add('hide');
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 400);
+                }, timeRemaining);
+            };
+
+            startDismissTimer(remainingTime);
 
             // Pause progress bar & clear timer on hover
             toast.addEventListener('mouseenter', () => {
+                if (paused) return;
                 clearTimeout(dismissTimer);
+                paused = true;
+                const elapsed = Date.now() - (pauseTime || startTime);
+                remainingTime = Math.max(1000, remainingTime - elapsed);
                 const bar = toast.querySelector('.toast-progress-bar');
                 if (bar) {
                     bar.style.animationPlayState = 'paused';
                 }
+            });
+
+            // Resume progress bar & timer on mouse leave
+            toast.addEventListener('mouseleave', () => {
+                if (!paused) return;
+                paused = false;
+                pauseTime = Date.now();
+                const bar = toast.querySelector('.toast-progress-bar');
+                if (bar) {
+                    bar.style.animationPlayState = 'running';
+                }
+                startDismissTimer(remainingTime);
             });
         }
 
