@@ -53,9 +53,28 @@ def init_db():
                 product_id  INTEGER PRIMARY KEY,
                 in_stock    INTEGER NOT NULL DEFAULT 1,
                 price       REAL,
+                name        TEXT,
+                category    TEXT,
+                mrp         REAL,
+                weight      TEXT,
+                image       TEXT,
+                is_deleted  INTEGER DEFAULT 0,
                 updated_at  REAL NOT NULL
             )
         ''')
+        # Check and alter table to add columns if they don't exist
+        for col_name, col_type in [
+            ('name', 'TEXT'),
+            ('category', 'TEXT'),
+            ('mrp', 'REAL'),
+            ('weight', 'TEXT'),
+            ('image', 'TEXT'),
+            ('is_deleted', 'INTEGER DEFAULT 0')
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE inventory_overrides ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                pass
         conn.execute('''
             CREATE TABLE IF NOT EXISTS support_tickets (
                 id            TEXT PRIMARY KEY,
@@ -139,23 +158,41 @@ def load_customer(phone: str):
         'khata_bal': row[3] or 0
     }
 
-def save_inventory_override(product_id: int, in_stock: int, price: float = None):
-    """Upsert stock status and price override details for a product."""
+def save_inventory_override(product_id: int, in_stock: int, price: float = None, name: str = None, category: str = None, mrp: float = None, weight: str = None, image: str = None, is_deleted: int = 0):
+    """Upsert stock status and details for a product override."""
     with get_db() as conn:
         conn.execute(
-            '''INSERT INTO inventory_overrides (product_id, in_stock, price, updated_at)
-               VALUES (?, ?, ?, ?)
+            '''INSERT INTO inventory_overrides (product_id, in_stock, price, name, category, mrp, weight, image, is_deleted, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(product_id) DO UPDATE SET
-                   in_stock=excluded.in_stock, price=excluded.price, updated_at=excluded.updated_at''',
-            (product_id, in_stock, price, time.time())
+                   in_stock=excluded.in_stock,
+                   price=excluded.price,
+                   name=excluded.name,
+                   category=excluded.category,
+                   mrp=excluded.mrp,
+                   weight=excluded.weight,
+                   image=excluded.image,
+                   is_deleted=excluded.is_deleted,
+                   updated_at=excluded.updated_at''',
+            (product_id, in_stock, price, name, category, mrp, weight, image, is_deleted, time.time())
         )
         conn.commit()
 
 def load_inventory_overrides() -> list:
     """Return list of all inventory overrides."""
     with get_db() as conn:
-        rows = conn.execute('SELECT product_id, in_stock, price FROM inventory_overrides').fetchall()
-    return [{'product_id': r[0], 'in_stock': r[1], 'price': r[2]} for r in rows]
+        rows = conn.execute('SELECT product_id, in_stock, price, name, category, mrp, weight, image, is_deleted FROM inventory_overrides').fetchall()
+    return [{
+        'product_id': r[0],
+        'in_stock': r[1],
+        'price': r[2],
+        'name': r[3],
+        'category': r[4],
+        'mrp': r[5],
+        'weight': r[6],
+        'image': r[7],
+        'is_deleted': r[8]
+    } for r in rows]
 
 def save_support_ticket(ticket_id: str, customer_name: str, customer_phone: str, customer_email: str, issue: str, category: str, status: str = 'pending', created_at: float = None):
     """Upsert support ticket status and details."""

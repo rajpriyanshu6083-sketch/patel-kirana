@@ -193,6 +193,48 @@
         let currentlyInAdminView = false;
         let _pendingCheckoutType = null;
 
+        function _applyInventoryOverrides(overrides) {
+            if (!overrides) return;
+            overrides.forEach(override => {
+                const id = override.product_id;
+                const index = inventory.findIndex(p => p.id == id);
+                if (override.is_deleted === 1) {
+                    if (index !== -1) {
+                        inventory.splice(index, 1);
+                        delete cart[id];
+                    }
+                } else {
+                    if (index !== -1) {
+                        const product = inventory[index];
+                        product.inStock = override.in_stock === 1;
+                        if (override.price !== null) product.price = override.price;
+                        if (override.name) product.name = override.name;
+                        if (override.category) product.category = override.category;
+                        if (override.mrp !== null) product.mrp = override.mrp;
+                        if (override.weight) product.weight = override.weight;
+                        if (override.image) product.image = override.image;
+                    } else {
+                        inventory.unshift({
+                            id: id,
+                            name: override.name || 'New Product',
+                            category: override.category || 'general',
+                            price: override.price || 0,
+                            mrp: override.mrp || null,
+                            weight: override.weight || '',
+                            image: override.image || '',
+                            inStock: override.in_stock === 1
+                        });
+                    }
+                }
+            });
+            // Update cart constraint
+            overrides.forEach(override => {
+                if (override.in_stock === 0 && cart[override.product_id]) {
+                    delete cart[override.product_id];
+                }
+            });
+        }
+
         // Try to restore previous session immediately
         function _restoreSession() {
             const hasSession = _loadState();
@@ -202,13 +244,8 @@
                 // Still load inventory overrides for the product list
                 fetch('/api/inventory/overrides').then(r => r.json()).then(overrideData => {
                     if (overrideData && overrideData.success && overrideData.overrides) {
-                        overrideData.overrides.forEach(override => {
-                            const product = inventory.find(p => p.id == override.product_id);
-                            if (product) {
-                                product.inStock = override.in_stock === 1;
-                                if (override.price !== null) product.price = override.price;
-                            }
-                        });
+                        _applyInventoryOverrides(overrideData.overrides);
+                        filterProducts();
                     }
                 }).catch(() => {});
                 return;
@@ -251,18 +288,7 @@
 
             function applyOverridesAndContinue(overrideData) {
                 if (overrideData && overrideData.success && overrideData.overrides) {
-                    overrideData.overrides.forEach(override => {
-                        const product = inventory.find(p => p.id == override.product_id);
-                        if (product) {
-                            product.inStock = override.in_stock === 1;
-                            if (override.price !== null) product.price = override.price;
-                        }
-                    });
-                    overrideData.overrides.forEach(override => {
-                        if (override.in_stock === 0 && cart[override.product_id]) {
-                            delete cart[override.product_id];
-                        }
-                    });
+                    _applyInventoryOverrides(overrideData.overrides);
                     if (hasSession) _saveState();
                 }
                 continueRestore(hasSession);
@@ -1723,6 +1749,18 @@
                 if (typeof renderCartContent === 'function') renderCartContent();
                 if (typeof updateCartCount === 'function') updateCartCount();
                 _saveState();
+
+                // Post deletion to server overrides
+                fetch('/api/owner/update-inventory', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: id,
+                        in_stock: 0,
+                        is_deleted: 1
+                    })
+                }).catch(err => console.error("Error deleting product on server:", err));
+
                 alert("✅ Product deleted successfully!");
             }
         }
@@ -2135,7 +2173,13 @@
                 body: JSON.stringify({
                     product_id: finalId,
                     in_stock: inStock ? 1 : 0,
-                    price: price
+                    price: price,
+                    name: name,
+                    category: category,
+                    mrp: isNaN(mrp) ? null : mrp,
+                    weight: weight,
+                    image: image,
+                    is_deleted: 0
                 })
             }).catch(err => console.error("Error updating inventory override on server:", err));
 

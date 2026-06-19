@@ -290,9 +290,28 @@ def _init_db():
                 product_id  INTEGER PRIMARY KEY,
                 in_stock    INTEGER NOT NULL DEFAULT 1,
                 price       REAL,
+                name        TEXT,
+                category    TEXT,
+                mrp         REAL,
+                weight      TEXT,
+                image       TEXT,
+                is_deleted  INTEGER DEFAULT 0,
                 updated_at  REAL NOT NULL
             )
         ''')
+        # Check and alter table to add columns if they don't exist
+        for col_name, col_type in [
+            ('name', 'TEXT'),
+            ('category', 'TEXT'),
+            ('mrp', 'REAL'),
+            ('weight', 'TEXT'),
+            ('image', 'TEXT'),
+            ('is_deleted', 'INTEGER DEFAULT 0')
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE inventory_overrides ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                pass
         conn.execute('''
             CREATE TABLE IF NOT EXISTS support_tickets (
                 id            TEXT PRIMARY KEY,
@@ -935,11 +954,17 @@ def api_inventory_overrides():
 @app.route('/api/owner/update-inventory', methods=['POST'])
 @owner_required
 def api_owner_update_inventory():
-    """Create or update a product's stock status or price override."""
+    """Create or update a product's stock status, price, or full details override."""
     data = request.get_json() or {}
     product_id = data.get('product_id')
     in_stock = data.get('in_stock')  # 0 or 1
     price = data.get('price')  # Optional float
+    name = data.get('name')
+    category = data.get('category')
+    mrp = data.get('mrp')
+    weight = data.get('weight')
+    image = data.get('image')
+    is_deleted = data.get('is_deleted', 0)
 
     if product_id is None or in_stock is None:
         return jsonify({'success': False, 'message': 'product_id and in_stock are required'}), 400
@@ -951,8 +976,24 @@ def api_owner_update_inventory():
     except (ValueError, TypeError):
         return jsonify({'success': False, 'message': 'Invalid parameter types.'}), 400
 
+    name_val = str(name).strip() if name is not None else None
+    category_val = str(category).strip() if category is not None else None
     try:
-        db_utils.save_inventory_override(product_id_val, in_stock_val, price_val)
+        mrp_val = float(mrp) if mrp is not None else None
+    except (ValueError, TypeError):
+        mrp_val = None
+    weight_val = str(weight).strip() if weight is not None else None
+    image_val = str(image).strip() if image is not None else None
+    try:
+        is_deleted_val = int(is_deleted)
+    except (ValueError, TypeError):
+        is_deleted_val = 0
+
+    try:
+        db_utils.save_inventory_override(
+            product_id_val, in_stock_val, price_val,
+            name_val, category_val, mrp_val, weight_val, image_val, is_deleted_val
+        )
         return jsonify({'success': True, 'message': 'Inventory override saved successfully'})
     except Exception as e:
         logger.error(f"Error saving inventory override: {e}")
