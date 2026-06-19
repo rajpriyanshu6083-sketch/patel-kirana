@@ -292,6 +292,18 @@ def _init_db():
             )
         ''')
         conn.execute('''
+            CREATE TABLE IF NOT EXISTS support_tickets (
+                id            TEXT PRIMARY KEY,
+                customer_name TEXT NOT NULL,
+                customer_phone TEXT NOT NULL,
+                customer_email TEXT,
+                issue         TEXT NOT NULL,
+                category      TEXT NOT NULL,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                created_at    REAL NOT NULL
+            )
+        ''')
+        conn.execute('''
             CREATE TABLE IF NOT EXISTS owners (
                 username    TEXT PRIMARY KEY,
                 password    TEXT NOT NULL,
@@ -943,6 +955,70 @@ def api_owner_update_inventory():
     except Exception as e:
         logger.error(f"Error saving inventory override: {e}")
         return jsonify({'success': False, 'message': 'Database error'}), 500
+
+
+@app.route('/api/support/create', methods=['POST'])
+def api_support_create():
+    """Submit a support ticket. Customer or guest."""
+    data = request.get_json() or {}
+    customer_name = data.get('customer_name', 'Guest').strip()
+    customer_phone = data.get('customer_phone', '').strip()
+    customer_email = data.get('customer_email', '').strip()
+    issue = data.get('issue', '').strip()
+    category = data.get('category', 'General Inquiry').strip()
+
+    if not customer_phone or not issue:
+        return jsonify({'success': False, 'message': 'Phone number and issue details are required.'}), 400
+
+    ticket_id = str(uuid.uuid4())
+    now = time.time()
+
+    try:
+        db_utils.save_support_ticket(
+            ticket_id=ticket_id,
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            customer_email=customer_email,
+            issue=issue,
+            category=category,
+            status='pending',
+            created_at=now
+        )
+    except Exception as e:
+        logger.error(f"Error creating support ticket: {e}")
+        return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
+
+    return jsonify({'success': True, 'ticket_id': ticket_id})
+
+
+@app.route('/api/owner/support-tickets', methods=['GET'])
+@owner_required
+def api_owner_support_tickets():
+    """Fetch all customer support tickets."""
+    try:
+        tickets = db_utils.load_all_support_tickets()
+        return jsonify({'success': True, 'tickets': tickets})
+    except Exception as e:
+        logger.error(f"Error loading support tickets: {e}")
+        return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
+
+
+@app.route('/api/owner/support-tickets/resolve', methods=['POST'])
+@owner_required
+def api_owner_resolve_ticket():
+    """Mark a support ticket as resolved."""
+    data = request.get_json() or {}
+    ticket_id = data.get('ticket_id', '').strip()
+
+    if not ticket_id:
+        return jsonify({'success': False, 'message': 'ticket_id is required.'}), 400
+
+    try:
+        db_utils.resolve_support_ticket(ticket_id)
+        return jsonify({'success': True, 'message': 'Ticket marked as resolved.'})
+    except Exception as e:
+        logger.error(f"Error resolving support ticket: {e}")
+        return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
 
 
 if __name__ == '__main__':

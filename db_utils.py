@@ -57,6 +57,18 @@ def init_db():
             )
         ''')
         conn.execute('''
+            CREATE TABLE IF NOT EXISTS support_tickets (
+                id            TEXT PRIMARY KEY,
+                customer_name TEXT NOT NULL,
+                customer_phone TEXT NOT NULL,
+                customer_email TEXT,
+                issue         TEXT NOT NULL,
+                category      TEXT NOT NULL,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                created_at    REAL NOT NULL
+            )
+        ''')
+        conn.execute('''
             CREATE TABLE IF NOT EXISTS owners (
                 username    TEXT PRIMARY KEY,
                 password    TEXT NOT NULL,
@@ -144,3 +156,38 @@ def load_inventory_overrides() -> list:
     with get_db() as conn:
         rows = conn.execute('SELECT product_id, in_stock, price FROM inventory_overrides').fetchall()
     return [{'product_id': r[0], 'in_stock': r[1], 'price': r[2]} for r in rows]
+
+def save_support_ticket(ticket_id: str, customer_name: str, customer_phone: str, customer_email: str, issue: str, category: str, status: str = 'pending', created_at: float = None):
+    """Upsert support ticket status and details."""
+    if created_at is None:
+        created_at = time.time()
+    with get_db() as conn:
+        conn.execute(
+            '''INSERT OR REPLACE INTO support_tickets (id, customer_name, customer_phone, customer_email, issue, category, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+            (ticket_id, customer_name, customer_phone, customer_email, issue, category, status, created_at)
+        )
+        conn.commit()
+
+def load_all_support_tickets() -> list:
+    """Return list of all support tickets ordered by created_at DESC."""
+    with get_db() as conn:
+        rows = conn.execute(
+            'SELECT id, customer_name, customer_phone, customer_email, issue, category, status, created_at FROM support_tickets ORDER BY created_at DESC'
+        ).fetchall()
+    return [{
+        'id': r[0],
+        'customer_name': r[1],
+        'customer_phone': r[2],
+        'customer_email': r[3],
+        'issue': r[4],
+        'category': r[5],
+        'status': r[6],
+        'created_at': r[7]
+    } for r in rows]
+
+def resolve_support_ticket(ticket_id: str):
+    """Mark a support ticket as resolved."""
+    with get_db() as conn:
+        conn.execute("UPDATE support_tickets SET status = 'resolved' WHERE id = ?", (ticket_id,))
+        conn.commit()

@@ -828,6 +828,77 @@ class PatelKiranaTestCase(unittest.TestCase):
             self.assertFalse(data['is_owner'])
             self.assertEqual(data['customer_phone'], '9876543210')
 
+    def test_support_ticket_creation_and_management(self):
+        """Verify that support tickets can be created by users and managed by the owner"""
+        # 1. Create a support ticket
+        ticket_payload = {
+            "customer_name": "Support Tester",
+            "customer_phone": "9999988888",
+            "customer_email": "tester@support.com",
+            "issue": "I have not received my milk kit yet.",
+            "category": "Delayed Delivery"
+        }
+        with self.client.post('/api/support/create',
+                              data=json.dumps(ticket_payload),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertIn('ticket_id', data)
+            ticket_id = data['ticket_id']
+
+        # 2. Verify invalid ticket creation request is rejected
+        invalid_payload = {
+            "customer_name": "Invalid Tester",
+            "customer_phone": "",
+            "issue": ""
+        }
+        with self.client.post('/api/support/create',
+                              data=json.dumps(invalid_payload),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 400)
+
+        # 3. Verify owner access protection (should get 403 when not logged in as owner)
+        with self.client.get('/api/owner/support-tickets') as response:
+            self.assertEqual(response.status_code, 403)
+
+        with self.client.post('/api/owner/support-tickets/resolve',
+                               data=json.dumps({"ticket_id": ticket_id}),
+                               content_type='application/json') as response:
+            self.assertEqual(response.status_code, 403)
+
+        # 4. Log in as owner and load all tickets
+        with self.client.session_transaction() as sess:
+            sess['is_owner'] = True
+
+        with self.client.get('/api/owner/support-tickets') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertGreaterEqual(len(data['tickets']), 1)
+            # Find the created ticket
+            found = next((t for t in data['tickets'] if t['id'] == ticket_id), None)
+            self.assertIsNotNone(found)
+            self.assertEqual(found['customer_name'], "Support Tester")
+            self.assertEqual(found['status'], "pending")
+
+        # 5. Owner resolves the support ticket
+        with self.client.post('/api/owner/support-tickets/resolve',
+                               data=json.dumps({"ticket_id": ticket_id}),
+                               content_type='application/json') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+
+        # 6. Verify ticket status is now resolved
+        with self.client.get('/api/owner/support-tickets') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            found = next((t for t in data['tickets'] if t['id'] == ticket_id), None)
+            self.assertIsNotNone(found)
+            self.assertEqual(found['status'], "resolved")
+
+
 if __name__ == '__main__':
     unittest.main()
 

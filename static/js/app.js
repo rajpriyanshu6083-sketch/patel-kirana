@@ -1314,7 +1314,7 @@
         };
 
         function switchOwnerTab(tab) {
-            ['orders', 'products', 'ledger', 'analytics', 'settings'].forEach(t => {
+            ['orders', 'products', 'ledger', 'support', 'analytics', 'settings'].forEach(t => {
                 document.getElementById('ow-panel-' + t).classList.toggle('active', t === tab);
                 document.getElementById('ow-nav-' + t).classList.toggle('active', t === tab);
             });
@@ -1324,6 +1324,7 @@
             if (tab === 'orders') renderOwnerOrders();
             if (tab === 'products') renderOwnerProducts();
             if (tab === 'ledger') renderOwnerLedger();
+            if (tab === 'support') renderOwnerSupport();
             if (tab === 'analytics') renderOwnerAnalytics();
             if (tab === 'settings') {
                 document.getElementById('ow-prod-count').innerText =
@@ -1843,6 +1844,130 @@
                 .catch(() => {
                     list.innerHTML = '<div style="text-align:center;color:#ef4444;padding:30px;">\u274c Could not connect to server.</div>';
                 });
+        }
+
+        // ── Customer Support ──────────────────────────────────────
+        function renderOwnerSupport() {
+            const list = document.getElementById('ow-support-list');
+            const statsEl = document.getElementById('ow-support-stats');
+
+            let supportSkeleton = '';
+            for (let i = 0; i < 3; i++) {
+                supportSkeleton += `
+                    <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="skeleton-shimmer" style="width: 120px; height: 14px; border-radius: 4px;"></div>
+                            <div class="skeleton-shimmer" style="width: 70px; height: 18px; border-radius: 9px;"></div>
+                        </div>
+                        <div class="skeleton-shimmer" style="width: 90%; height: 12px; border-radius: 4px;"></div>
+                        <div style="display: flex; gap: 10px; margin-top: 8px;">
+                            <div class="skeleton-shimmer" style="flex: 1; height: 32px; border-radius: 6px;"></div>
+                            <div class="skeleton-shimmer" style="flex: 1; height: 32px; border-radius: 6px;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+            list.innerHTML = supportSkeleton;
+
+            fetch('/api/owner/support-tickets')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) {
+                        list.innerHTML = '<div style="text-align:center;color:#ef4444;padding:30px;">❌ Failed to load support tickets.</div>';
+                        return;
+                    }
+
+                    const tickets = data.tickets;
+                    const pendingCount = tickets.filter(t => t.status === 'pending').length;
+                    const resolvedCount = tickets.filter(t => t.status === 'resolved').length;
+
+                    statsEl.innerHTML = `
+                        <div class="ow-stat-card blue">
+                            <div class="stat-icon">🎧</div>
+                            <div class="stat-value" style="color:#0284c7;">${pendingCount}</div>
+                            <div class="stat-label">Active Tickets</div>
+                        </div>
+                        <div class="ow-stat-card green">
+                            <div class="stat-icon">✅</div>
+                            <div class="stat-value" style="color:#16a34a;">${resolvedCount}</div>
+                            <div class="stat-label">Resolved Tickets</div>
+                        </div>
+                    `;
+
+                    if (tickets.length === 0) {
+                        list.innerHTML = `
+                            <div style="text-align:center;padding:40px 20px;">
+                                <div style="font-size:2.5rem;margin-bottom:10px;">🎉</div>
+                                <div style="font-weight:700;color:#0f172a;">All Clear!</div>
+                                <div style="color:#94a3b8;font-size:0.9rem;margin-top:4px;">No support tickets submitted yet.</div>
+                            </div>`;
+                        return;
+                    }
+
+                    list.innerHTML = tickets.map(t => {
+                        const date = new Date(t.created_at * 1000).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                        const isPending = t.status === 'pending';
+                        
+                        let cardBorder = isPending ? 'border: 2px solid #f59e0b;' : 'border: 2px solid #e2e8f0; opacity: 0.75;';
+                        let badgeBg = isPending ? 'background: #fffbeb; color: #b45309;' : 'background: #f0fdf4; color: #15803d;';
+                        let badgeLabel = isPending ? '⏳ PENDING' : '✅ RESOLVED';
+
+                        return `
+                            <div class="feature-card" style="${cardBorder} margin-bottom: 12px; border-radius:16px; background:#fff; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+                                    <div>
+                                        <span style="font-size:0.75rem; font-weight:700; color:#94a3b8;">${date}</span>
+                                        <h4 style="font-weight:800; font-size:1rem; color:#0f172a; margin-top:2px;">👤 ${t.customer_name}</h4>
+                                    </div>
+                                    <span style="font-size:0.68rem; font-weight:800; padding:2px 8px; border-radius:12px; ${badgeBg}">${badgeLabel}</span>
+                                </div>
+                                <div style="font-size:0.8rem; font-weight:700; color:#4b5563; margin-bottom:12px; padding:10px; background:#f9fafb; border-radius:8px;">
+                                    <span style="font-size:0.75rem; color:#6b7280; font-weight:800; text-transform:uppercase; display:block; margin-bottom:4px;">💬 Category: ${t.category}</span>
+                                    "${t.issue}"
+                                </div>
+                                <div style="font-size:0.78rem; color:#4b5563; margin-bottom:12px; line-height:1.5;">
+                                    📞 <b>Phone:</b> <a href="tel:${t.customer_phone}" style="color:var(--primary); font-weight:700; text-decoration:none;">${t.customer_phone}</a><br>
+                                    ✉️ <b>Email:</b> <a href="mailto:${t.customer_email}" style="color:var(--primary); font-weight:700; text-decoration:none;">${t.customer_email || '—'}</a>
+                                </div>
+                                <div style="display:flex; gap:8px; margin-top:10px;">
+                                    ${isPending ? `
+                                        <button onclick="resolveOwnerTicket('${t.id}')" style="flex:1; background:#22c55e; color:white; border:none; padding:10px; border-radius:8px; font-size:0.78rem; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; transition: transform 0.1s;">
+                                            ✅ Resolve Ticket
+                                        </button>
+                                    ` : ''}
+                                    <a href="tel:${t.customer_phone}" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#eff6ff; color:#1d4ed8; text-decoration:none; padding:10px; border-radius:8px; font-size:0.78rem; font-weight:800; text-align:center;">
+                                        📞 Call Customer
+                                    </a>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    if (typeof applyGeneric3DTilt === 'function') {
+                        applyGeneric3DTilt('.ow-stat-card', 6);
+                    }
+                })
+                .catch(() => {
+                    list.innerHTML = '<div style="text-align:center;color:#ef4444;padding:30px;">❌ Could not connect to server.</div>';
+                });
+        }
+
+        function resolveOwnerTicket(ticketId) {
+            fetch('/api/owner/support-tickets/resolve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ticket_id: ticketId })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert("Ticket marked as resolved!");
+                    renderOwnerSupport();
+                } else {
+                    alert("Failed to resolve ticket: " + data.message);
+                }
+            })
+            .catch(() => alert("Network error resolving ticket."));
         }
 
         // ── Settings helpers ──────────────────────────────────────
@@ -2558,6 +2683,26 @@
 
                     setTimeout(() => {
                         const committed = `✅ Ticket generated and sent to the team! A support agent will call you at <b>${userProfile.contact}</b> within 5 minutes with a solution.`;
+
+                        // Persist support ticket in SQLite via Flask backend
+                        fetch('/api/support/create', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                customer_name: userProfile.name || 'Guest',
+                                customer_phone: userProfile.contact || 'None',
+                                customer_email: userProfile.email || 'None',
+                                issue: msg,
+                                category: category
+                            })
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!data.success) {
+                                console.error("Error logging support ticket:", data.message);
+                            }
+                        })
+                        .catch(err => console.error("Network error logging support ticket:", err));
 
                         chatHistory.innerHTML += `
                             <div class="chat-msg msg-bot">
