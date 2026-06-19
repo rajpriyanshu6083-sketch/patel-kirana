@@ -898,6 +898,75 @@ class PatelKiranaTestCase(unittest.TestCase):
             self.assertIsNotNone(found)
             self.assertEqual(found['status'], "resolved")
 
+    def test_session_restore_and_versioning_flow(self):
+        """Verify version checks and automatic session restoration endpoints"""
+        # 1. Verify session-check returns the APP_VERSION
+        with self.client.get('/api/session-check') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+            self.assertEqual(data['version'], "1.0.4")
+
+        # 2. Try to restore a customer session that does not exist
+        with self.client.post('/api/session/restore',
+                              data=json.dumps({"phone": "0000000000", "is_owner": False}),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 404)
+
+        # 3. Create a customer profile and restore it
+        save_payload = {
+            "phone": "9876543210",
+            "email": "test@restore.com",
+            "name": "Restore User",
+            "addresses": ["123 Restore St"]
+        }
+        # Mock session for saving
+        with self.client.session_transaction() as sess:
+            sess['customer_phone'] = "9876543210"
+
+        with self.client.post('/api/customer/save-profile',
+                              data=json.dumps(save_payload),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 200)
+
+        # Clear session to simulate expiration
+        with self.client.session_transaction() as sess:
+            sess.clear()
+
+        # Restore customer session
+        with self.client.post('/api/session/restore',
+                              data=json.dumps({"phone": "9876543210", "is_owner": False}),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+
+        # Verify session is restored
+        with self.client.get('/api/session-check') as response:
+            data = json.loads(response.data)
+            self.assertTrue(data['is_logged_in'])
+            self.assertEqual(data['customer_phone'], '9876543210')
+            self.assertFalse(data['is_owner'])
+
+        # 4. Restore owner session
+        # Clear session again
+        with self.client.session_transaction() as sess:
+            sess.clear()
+
+        # Restore owner session for admin
+        with self.client.post('/api/session/restore',
+                              data=json.dumps({"owner_username": "admin", "is_owner": True}),
+                              content_type='application/json') as response:
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertTrue(data['success'])
+
+        # Verify owner session is restored
+        with self.client.get('/api/session-check') as response:
+            data = json.loads(response.data)
+            self.assertTrue(data['is_logged_in'])
+            self.assertTrue(data['is_owner'])
+
 
 if __name__ == '__main__':
     unittest.main()

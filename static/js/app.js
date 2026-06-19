@@ -109,6 +109,7 @@
         // =============================================
         // PERSISTENT STATE  (localStorage + backend DB)
         // =============================================
+        const APP_VERSION = '1.0.4';
         const _LS_KEY = 'pg_state_v1'; // localStorage key
 
         function _saveState() {
@@ -119,7 +120,8 @@
                     cart,
                     khataBalance,
                     isOwner,
-                    currentUser
+                    currentUser,
+                    version: APP_VERSION
                 }));
             } catch (e) { /* storage full / private mode */ }
             // Also push to server DB if logged in as customer
@@ -194,52 +196,34 @@
                 loginContainer.style.pointerEvents = 'none';
             }
 
-            // Run session-check and inventory overrides IN PARALLEL for faster startup
-            Promise.all([
-                fetch('/api/session-check').then(r => r.json()).catch(() => null),
-                fetch('/api/inventory/overrides').then(r => r.json()).catch(() => null)
-            ]).then(([sess, overrideData]) => {
-                // Restore login container opacity
+            function forceLogout() {
+                cart = {};
+                addresses = [];
+                khataBalance = 0;
+                userProfile = { name: '', contact: '', email: '' };
+                currentUser = '';
+                isOwner = false;
+                localStorage.removeItem('patel_groceries_session');
+                localStorage.removeItem(_LS_KEY);
+                localStorage.removeItem('owner_username');
+                fetch('/api/logout', { method: 'POST' }).catch(() => {});
                 if (loginContainer) {
-                    loginContainer.style.opacity = '';
+                    loginContainer.classList.remove('hidden');
+                    loginContainer.style.display = 'flex';
+                    loginContainer.style.visibility = 'visible';
+                    loginContainer.style.opacity = '1';
                     loginContainer.style.pointerEvents = '';
                 }
-
-                // --- Session validation ---
-                if (hasSession && sess) {
-                    const clientIsOwner = isOwner;
-                    const clientPhone = userProfile.contact;
-                    if (!sess.is_logged_in ||
-                        (clientIsOwner !== sess.is_owner) ||
-                        (!clientIsOwner && clientPhone !== sess.customer_phone)) {
-                        console.warn('Session mismatch detected. Clearing local state and showing login...');
-                        // Clear local state without running the full logout animation
-                        // (nothing is shown yet, so we just reset state and show login)
-                        cart = {};
-                        addresses = [];
-                        khataBalance = 0;
-                        userProfile = { name: '', contact: '', email: '' };
-                        currentUser = '';
-                        isOwner = false;
-                        localStorage.removeItem('patel_groceries_session');
-                        localStorage.removeItem(_LS_KEY);
-                        // Call backend logout to clear server session too
-                        fetch('/api/logout', { method: 'POST' }).catch(() => {});
-                        // Show login screen cleanly (it's already visible, just ensure it's visible)
-                        if (loginContainer) {
-                            loginContainer.classList.remove('hidden');
-                            loginContainer.style.display = 'flex';
-                            loginContainer.style.visibility = 'visible';
-                            loginContainer.style.opacity = '1';
-                            loginContainer.style.pointerEvents = '';
-                        }
-                        return;
-                    }
-                } else if (sess && sess.is_logged_in && !hasSession) {
-                    fetch('/api/logout', { method: 'POST' }).catch(() => {});
+                const appContainer = document.getElementById('app-container');
+                if (appContainer) appContainer.style.display = 'none';
+                const ownerShell = document.getElementById('owner-shell');
+                if (ownerShell) {
+                    ownerShell.style.display = 'none';
+                    ownerShell.classList.remove('active');
                 }
+            }
 
-                // --- Apply inventory overrides ---
+            function applyOverridesAndContinue(overrideData) {
                 if (overrideData && overrideData.success && overrideData.overrides) {
                     overrideData.overrides.forEach(override => {
                         const product = inventory.find(p => p.id == override.product_id);
@@ -255,11 +239,76 @@
                     });
                     if (hasSession) _saveState();
                 }
-
                 continueRestore(hasSession);
+            }
+
+            // Run session-check and inventory overrides IN PARALLEL for faster startup
+            Promise.all([
+                fetch('/api/session-check').then(r => r.json()).catch(() => null),
+                fetch('/api/inventory/overrides').then(r => r.json()).catch(() => null)
+            ]).then(([sess, overrideData]) => {
+                // Restore login container opacity
+                if (loginContainer) {
+                    loginContainer.style.opacity = '';
+                    loginContainer.style.pointerEvents = '';
+                }
+
+                // Check version update first
+                const clientState = JSON.parse(localStorage.getItem(_LS_KEY) || '{}');
+                const clientVersion = clientState.version;
+                if (sess && sess.success && sess.version && clientVersion && sess.version !== clientVersion) {
+                    console.warn('App version mismatch (update detected). Clearing local state and showing login...');
+                    forceLogout();
+                    return;
+                }
+
+                // --- Session validation & auto-restore ---
+                if (sess && sess.success) {
+                    const clientIsOwner = isOwner;
+                    const clientPhone = userProfile.contact;
+
+                    if (!sess.is_logged_in) {
+                        // Server session expired but we have local session: auto-restore it!
+                        console.log('Server session expired. Attempting auto-restore...');
+                        fetch('/api/session/restore', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                phone: clientPhone,
+                                is_owner: clientIsOwner,
+                                owner_username: clientIsOwner ? (localStorage.getItem('owner_username') || 'admin') : ''
+                            })
+                        })
+                        .then(r => r.json())
+                        .then(restoreData => {
+                            if (restoreData.success) {
+                                console.log('Session auto-restored successfully.');
+                                applyOverridesAndContinue(overrideData);
+                            } else {
+                                console.warn('Session auto-restore failed:', restoreData.message);
+                                forceLogout();
+                            }
+                        })
+                        .catch(() => {
+                            // Offline/Network error during restore: still allow app entry using offline cached session
+                            console.warn('Offline/Network error during session restore. Allowing offline access...');
+                            applyOverridesAndContinue(overrideData);
+                        });
+                        return;
+                    } else if ((clientIsOwner !== sess.is_owner) ||
+                               (!clientIsOwner && clientPhone !== sess.customer_phone)) {
+                        console.warn('Session mismatch detected. Clearing local state and showing login...');
+                        forceLogout();
+                        return;
+                    }
+                } else {
+                    // Fetch failed or failed response: allow offline access
+                    console.warn('Could not reach server for session validation. Entering offline mode...');
+                }
+
+                applyOverridesAndContinue(overrideData);
             }).catch(err => {
-                console.error('Session restore failed:', err);
-                // On network error, restore from localStorage without server validation
+                console.error("Error during restore session:", err);
                 if (loginContainer) {
                     loginContainer.style.opacity = '';
                     loginContainer.style.pointerEvents = '';
@@ -1018,6 +1067,7 @@
                 userProfile.name = owner.name;
                 userProfile.email = owner.email;
                 userProfile.contact = owner.phone;
+                localStorage.setItem('owner_username', username); // Save username for auto-restore
                 loginSuccess(owner.name, owner.phone, true);
             })
             .catch(() => {

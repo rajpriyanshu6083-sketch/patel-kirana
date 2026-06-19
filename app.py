@@ -20,6 +20,7 @@ load_dotenv(env_path, override=True)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'replace-this-with-a-secure-key')
+APP_VERSION = '1.0.4'
 
 # Configure logging — WARNING level to avoid verbose debug spam on every request
 logging.basicConfig(level=logging.WARNING)
@@ -102,7 +103,8 @@ def api_session_check():
         'success': True,
         'is_logged_in': is_owner or bool(customer_phone),
         'is_owner': is_owner,
-        'customer_phone': customer_phone
+        'customer_phone': customer_phone,
+        'version': APP_VERSION
     })
     resp.headers['Cache-Control'] = 'no-store'
     return resp
@@ -1019,6 +1021,41 @@ def api_owner_resolve_ticket():
     except Exception as e:
         logger.error(f"Error resolving support ticket: {e}")
         return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
+
+
+@app.route('/api/session/restore', methods=['POST'])
+def api_session_restore():
+    """Restore server-side session from client-side persistent state if version matches."""
+    data = request.get_json() or {}
+    phone = data.get('phone', '').strip()
+    is_owner_val = data.get('is_owner', False)
+    owner_username = data.get('owner_username', '').strip()
+
+    if is_owner_val:
+        if not owner_username:
+            return jsonify({'success': False, 'message': 'Owner username required.'}), 400
+        try:
+            with _get_db() as conn:
+                row = conn.execute('SELECT name, email, phone FROM owners WHERE username = ?', (owner_username,)).fetchone()
+                if not row:
+                    return jsonify({'success': False, 'message': 'Owner not found.'}), 404
+                session['is_owner'] = True
+                session['owner_username'] = owner_username
+                return jsonify({'success': True, 'message': 'Owner session restored.'})
+        except Exception as e:
+            logger.error(f"Error restoring owner session: {e}")
+            return jsonify({'success': False, 'message': 'Database error.'}), 500
+    else:
+        if not phone:
+            return jsonify({'success': False, 'message': 'Phone required.'}), 400
+        profile = _load_customer(phone)
+        if not profile:
+            return jsonify({'success': False, 'message': 'Customer not found.'}), 404
+        session['customer_phone'] = phone
+        session['otp_phone'] = phone
+        session['otp_name'] = profile['name']
+        session['otp_email'] = profile['email']
+        return jsonify({'success': True, 'message': 'Customer session restored.'})
 
 
 if __name__ == '__main__':
