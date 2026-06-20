@@ -1087,6 +1087,94 @@
             bottom: 0;
         }
 
+        /* Product details expanded specs and carousel styling */
+        details.details-accordion[open] summary i {
+            transform: rotate(180deg);
+        }
+        .rec-carousel {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding: 5px 0 10px 0;
+            scrollbar-width: thin;
+        }
+        .rec-carousel::-webkit-scrollbar {
+            height: 4px;
+        }
+        .rec-carousel::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .rec-carousel::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 2px;
+        }
+        .rec-card {
+            flex: 0 0 130px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .rec-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        .rec-card-name {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 4px;
+        }
+        .rec-card-weight {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+        }
+        .rec-card-price {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: var(--text-main);
+        }
+        .details-qty-container {
+            display: flex;
+            align-items: center;
+            background: #f1f5f9;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            width: 140px;
+            height: 44px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .details-qty-container button {
+            flex: 1;
+            border: none;
+            background: none;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--text-main);
+            cursor: pointer;
+            height: 100%;
+            transition: background 0.2s;
+        }
+        .details-qty-container button:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+        .details-qty-container span {
+            flex: 1;
+            text-align: center;
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: var(--text-main);
+        }
+
         .modal-header {
             padding: 15px 20px;
             border-bottom: 1px solid rgba(0, 0, 0, 0.05);
@@ -3621,6 +3709,11 @@
             display: block;
         }
 
+        .owner-custom-marker {
+            background: none !important;
+            border: none !important;
+        }
+
         .owner-map-footer {
             background: white;
             padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
@@ -4399,6 +4492,50 @@
         .slide-modal.open {
             transform: perspective(1200px) rotateX(0deg) translateY(0) translateZ(0) scale(1) !important;
             opacity: 1 !important;
+        }
+
+        /* Slide modal text readability and card adjustments */
+        .slide-modal .rec-card {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            color: #f8fafc !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        }
+        .slide-modal .rec-card:hover {
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-color: rgba(255, 255, 255, 0.15) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
+        }
+        .slide-modal .rec-card-name {
+            color: #f8fafc !important;
+        }
+        .slide-modal .rec-card-weight {
+            color: #cbd5e1 !important;
+        }
+        .slide-modal .rec-card-price {
+            color: #f8fafc !important;
+        }
+        .slide-modal .details-qty-container {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+        }
+        .slide-modal .details-qty-container button {
+            color: #f8fafc !important;
+        }
+        .slide-modal .details-qty-container button:hover {
+            background: rgba(255, 255, 255, 0.08) !important;
+        }
+        .slide-modal .details-qty-container span {
+            color: #f8fafc !important;
+        }
+        .slide-modal .close-modal {
+            color: #cbd5e1 !important;
+            transition: color 0.2s;
+        }
+        .slide-modal .close-modal:hover {
+            color: #f8fafc !important;
         }
 
         /* 3D Map Picker & Owner map zoom transition */
@@ -5320,6 +5457,34 @@
                 <label>Image URL</label>
                 <input type="text" id="edit-prod-image">
             </div>
+            <div class="input-group">
+                <label>Description / Summary</label>
+                <textarea id="edit-prod-description" placeholder="Brief summary of the product..." rows="3" style="width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0; font-family:inherit;"></textarea>
+            </div>
+            <div class="input-group">
+                <label>Ingredients / Materials</label>
+                <input type="text" id="edit-prod-ingredients" placeholder="e.g. Milk, active cultures (for dairy) or Cotton">
+            </div>
+            <div class="input-group">
+                <label>Dimensions / Size</label>
+                <input type="text" id="edit-prod-dimensions" placeholder="e.g. 10x5x5 cm">
+            </div>
+            <div class="input-group">
+                <label>Care / Storage Instructions</label>
+                <input type="text" id="edit-prod-care" placeholder="e.g. Keep refrigerated below 4°C">
+            </div>
+            <div class="input-group">
+                <label>Warranty / Shelf Life</label>
+                <input type="text" id="edit-prod-warranty" placeholder="e.g. Best before 7 days from manufacture">
+            </div>
+            <div class="input-group">
+                <label>USPs / Key Highlights (one per line)</label>
+                <textarea id="edit-prod-usps" placeholder="e.g. 100% Organic&#10;No Added Preservatives" rows="2" style="width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0; font-family:inherit;"></textarea>
+            </div>
+            <div class="input-group">
+                <label>Technical Specifications (Format: Key: Value, one per line)</label>
+                <textarea id="edit-prod-specs" placeholder="e.g. Brand: Amul&#10;Origin: India" rows="3" style="width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0; font-family:inherit;"></textarea>
+            </div>
             <div class="input-group"
                 style="display:flex; align-items:center; gap:10px; background:#f0fdf4; padding:15px; border-radius:8px; border:1px solid var(--primary);">
                 <input type="checkbox" id="edit-prod-stock"
@@ -5328,6 +5493,88 @@
             </div>
             <button class="btn-full" onclick="saveAdminProduct()" style="margin-bottom: 20px;">Save Product
                 Updates</button>
+        </div>
+    </div>
+
+    <!-- CUSTOMER PRODUCT DETAILS & RECOMMENDATIONS MODAL -->
+    <div class="slide-modal" id="product-details-modal" style="z-index: 9500;">
+        <div class="modal-header">
+            <h3 id="details-modal-title" style="color: #f8fafc;">Product Details</h3>
+            <button class="close-modal" onclick="closeDetailsModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" style="padding-bottom: 80px; overflow-y: auto;">
+            <!-- Main details -->
+            <div class="details-main-info" style="display: flex; gap: 20px; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap;">
+                <div class="details-img-container" style="flex: 1; min-width: 150px; border-radius: 12px; overflow: hidden; background: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: center; padding: 10px;">
+                    <img id="details-prod-image" src="" alt="" style="width: 100%; height: auto; max-height: 200px; object-fit: contain;">
+                </div>
+                <div style="flex: 2; min-width: 200px; display: flex; flex-direction: column; gap: 8px;">
+                    <div id="details-prod-badge" class="delivery-tag" style="position:static; display:inline-block; align-self: flex-start; background: var(--primary); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800;">10 MINS</div>
+                    <h2 id="details-prod-name" style="font-size: 1.4rem; font-weight: 800; color: #f8fafc; line-height: 1.2;">Product Name</h2>
+                    <div id="details-prod-weight" style="font-size: 0.9rem; color: #cbd5e1; font-weight: 500;">500 g</div>
+                    
+                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+                        <div id="details-price-container" style="display: flex; align-items: baseline; gap: 6px;">
+                            <span id="details-prod-price" style="font-size: 1.5rem; font-weight: 800; color: #f8fafc;">₹100</span>
+                            <span id="details-prod-mrp" style="font-size: 0.9rem; color: #94a3b8; text-decoration: line-through;">₹120</span>
+                        </div>
+                        <div id="details-prod-discount" class="discount-tag" style="position:static; background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 800;">15% OFF</div>
+                    </div>
+                    
+                    <div id="details-action-container" style="margin-top: 10px; min-height: 44px;">
+                        <!-- Dynamic Add Button -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div style="background: rgba(22, 163, 74, 0.1); border: 1px solid rgba(22, 163, 74, 0.2); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                <h4 style="font-size: 0.85rem; font-weight: 800; color: #4ade80; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Product Summary</h4>
+                <p id="details-prod-description" style="font-size: 0.9rem; color: #f8fafc; line-height: 1.5; font-weight: 500;">No description available for this product.</p>
+            </div>
+
+            <!-- Interactive Accordion -->
+            <details class="details-accordion" style="background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; margin-bottom: 25px; overflow: hidden; transition: all 0.3s ease;">
+                <summary style="padding: 15px; font-size: 0.9rem; font-weight: 700; color: #f8fafc; cursor: pointer; display: flex; align-items: center; justify-content: space-between; list-style: none; user-select: none;">
+                    <span>📐 View Specifications &amp; Ingredients</span>
+                    <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; transition: transform 0.3s ease; color: #cbd5e1;"></i>
+                </summary>
+                <div style="padding: 0 15px 15px 15px; border-top: 1px solid rgba(255, 255, 255, 0.1); display: flex; flex-direction: column; gap: 12px; background: rgba(15, 23, 42, 0.25);">
+                    <div id="details-spec-ingredients" style="display:none; font-size: 0.85rem; line-height: 1.4; color: #cbd5e1; margin-top:12px;">
+                        <strong style="color: #f8fafc;">Ingredients/Materials:</strong> <span class="val"></span>
+                    </div>
+                    <div id="details-spec-dimensions" style="display:none; font-size: 0.85rem; line-height: 1.4; color: #cbd5e1;">
+                        <strong style="color: #f8fafc;">Dimensions:</strong> <span class="val"></span>
+                    </div>
+                    <div id="details-spec-care" style="display:none; font-size: 0.85rem; line-height: 1.4; color: #cbd5e1;">
+                        <strong style="color: #f8fafc;">Care/Storage:</strong> <span class="val"></span>
+                    </div>
+                    <div id="details-spec-warranty" style="display:none; font-size: 0.85rem; line-height: 1.4; color: #cbd5e1;">
+                        <strong style="color: #f8fafc;">Warranty/Shelf Life:</strong> <span class="val"></span>
+                    </div>
+                    
+                    <div id="details-spec-usps-container" style="display:none;">
+                        <strong style="font-size: 0.85rem; display:block; margin-bottom: 5px; color: #f8fafc;">Key Highlights:</strong>
+                        <ul id="details-spec-usps" style="padding-left: 10px; font-size: 0.85rem; color: #cbd5e1; display: flex; flex-direction: column; gap: 4px; list-style:none;"></ul>
+                    </div>
+
+                    <div id="details-spec-table-container" style="display:none; margin-top: 8px;">
+                        <strong style="font-size: 0.85rem; display:block; margin-bottom: 5px; color: #f8fafc;">Technical Specifications:</strong>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; background: rgba(15, 23, 42, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; overflow: hidden;">
+                            <tbody id="details-spec-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </details>
+
+            <!-- Recommendations Carousel -->
+            <div class="recommendations-section" style="margin-top: 25px;">
+                <h3 style="font-size: 1rem; font-weight: 800; color: #f8fafc; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">✨ Frequently Bought Together</h3>
+                <div id="details-cross-sell" class="rec-carousel"></div>
+                
+                <h3 style="font-size: 1rem; font-weight: 800; color: #f8fafc; margin-top: 20px; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">🔥 Customers Also Viewed</h3>
+                <div id="details-also-viewed" class="rec-carousel"></div>
+            </div>
         </div>
     </div>
 

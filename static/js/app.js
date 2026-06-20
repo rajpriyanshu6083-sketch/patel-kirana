@@ -192,6 +192,7 @@
         let isOwner = false;
         let currentlyInAdminView = false;
         let _pendingCheckoutType = null;
+        let _activeDetailsProduct = null;
 
         function _applyInventoryOverrides(overrides) {
             if (!overrides) return;
@@ -213,6 +214,8 @@
                         if (override.mrp !== null) product.mrp = override.mrp;
                         if (override.weight) product.weight = override.weight;
                         if (override.image) product.image = override.image;
+                        product.description = override.description || '';
+                        product.extendedDetails = override.extended_details ? JSON.parse(override.extended_details) : null;
                     } else {
                         inventory.unshift({
                             id: id,
@@ -222,7 +225,9 @@
                             mrp: override.mrp || null,
                             weight: override.weight || '',
                             image: override.image || '',
-                            inStock: override.in_stock === 1
+                            inStock: override.in_stock === 1,
+                            description: override.description || '',
+                            extendedDetails: override.extended_details ? JSON.parse(override.extended_details) : null
                         });
                     }
                 }
@@ -2104,6 +2109,23 @@
                 document.getElementById('edit-prod-weight').value = p.weight;
                 document.getElementById('edit-prod-image').value = p.image;
                 document.getElementById('edit-prod-stock').checked = p.inStock !== false;
+                
+                document.getElementById('edit-prod-description').value = p.description || '';
+                const ext = p.extendedDetails || {};
+                document.getElementById('edit-prod-ingredients').value = ext.ingredients || '';
+                document.getElementById('edit-prod-dimensions').value = ext.dimensions || '';
+                document.getElementById('edit-prod-care').value = ext.care || '';
+                document.getElementById('edit-prod-warranty').value = ext.warranty || '';
+                
+                const usps = ext.usps || [];
+                document.getElementById('edit-prod-usps').value = Array.isArray(usps) ? usps.join('\n') : (usps || '');
+                
+                const specsObj = ext.specs || {};
+                let specsStr = '';
+                if (specsObj && typeof specsObj === 'object') {
+                    specsStr = Object.entries(specsObj).map(([k, v]) => `${k}: ${v}`).join('\n');
+                }
+                document.getElementById('edit-prod-specs').value = specsStr;
             } else {
                 document.getElementById('admin-modal-title').innerText = "Add New Product";
                 document.getElementById('edit-prod-id').value = "";
@@ -2114,6 +2136,14 @@
                 document.getElementById('edit-prod-weight').value = "";
                 document.getElementById('edit-prod-image').value = "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop";
                 document.getElementById('edit-prod-stock').checked = true;
+                
+                document.getElementById('edit-prod-description').value = "";
+                document.getElementById('edit-prod-ingredients').value = "";
+                document.getElementById('edit-prod-dimensions').value = "";
+                document.getElementById('edit-prod-care').value = "";
+                document.getElementById('edit-prod-warranty').value = "";
+                document.getElementById('edit-prod-usps').value = "";
+                document.getElementById('edit-prod-specs').value = "";
             }
         }
 
@@ -2131,6 +2161,30 @@
             const weight = document.getElementById('edit-prod-weight').value.trim();
             const image = document.getElementById('edit-prod-image').value.trim();
             const inStock = document.getElementById('edit-prod-stock').checked;
+            
+            const description = document.getElementById('edit-prod-description').value.trim();
+            const ingredients = document.getElementById('edit-prod-ingredients').value.trim();
+            const dimensions = document.getElementById('edit-prod-dimensions').value.trim();
+            const care = document.getElementById('edit-prod-care').value.trim();
+            const warranty = document.getElementById('edit-prod-warranty').value.trim();
+            
+            const uspsRaw = document.getElementById('edit-prod-usps').value.trim();
+            const usps = uspsRaw ? uspsRaw.split('\n').map(s => s.trim()).filter(Boolean) : [];
+            
+            const specsRaw = document.getElementById('edit-prod-specs').value.trim();
+            const specs = {};
+            if (specsRaw) {
+                specsRaw.split('\n').forEach(line => {
+                    const colonIdx = line.indexOf(':');
+                    if (colonIdx !== -1) {
+                        const key = line.slice(0, colonIdx).trim();
+                        const val = line.slice(colonIdx + 1).trim();
+                        if (key) specs[key] = val;
+                    }
+                });
+            }
+            
+            const extendedDetails = { ingredients, dimensions, care, warranty, usps, specs };
 
             if (!name || !price || !weight || !image) {
                 alert("Please fill all required fields!");
@@ -2148,6 +2202,8 @@
                 p.weight = weight;
                 p.image = image;
                 p.inStock = inStock;
+                p.description = description;
+                p.extendedDetails = extendedDetails;
 
                 if (!inStock && cart[id]) {
                     delete cart[id];
@@ -2162,7 +2218,9 @@
                     mrp: isNaN(mrp) ? null : mrp,
                     weight: weight,
                     image: image,
-                    inStock: inStock
+                    inStock: inStock,
+                    description: description,
+                    extendedDetails: extendedDetails
                 });
             }
 
@@ -2179,7 +2237,9 @@
                     mrp: isNaN(mrp) ? null : mrp,
                     weight: weight,
                     image: image,
-                    is_deleted: 0
+                    is_deleted: 0,
+                    description: description,
+                    extended_details: extendedDetails
                 })
             }).catch(err => console.error("Error updating inventory override on server:", err));
 
@@ -3539,15 +3599,15 @@
 
                 if (p.inStock === false) {
                     stockOverlay = `<div class="out-of-stock-overlay">OUT OF STOCK</div>`;
-                    buttonHTML = `<button class="add-btn" style="background:#e2e8f0; color:#94a3b8; border-color:#e2e8f0; cursor:not-allowed;">${btnLabel}</button>`;
+                    buttonHTML = `<button class="add-btn" style="background:#e2e8f0; color:#94a3b8; border-color:#e2e8f0; cursor:not-allowed;" onclick="event.stopPropagation();">${btnLabel}</button>`;
                 } else {
                     buttonHTML = qty === 0
-                        ? `<button class="add-btn" onclick="updateQuantity(${p.id}, 1)">${btnLabel}</button>`
-                        : `<div class="qty-controls"><button onclick="updateQuantity(${p.id}, -1)">-</button><span>${qty}</span><button onclick="updateQuantity(${p.id}, 1)">+</button></div>`;
+                        ? `<button class="add-btn" onclick="updateQuantity(${p.id}, 1, event)">${btnLabel}</button>`
+                        : `<div class="qty-controls" onclick="event.stopPropagation();"><button onclick="updateQuantity(${p.id}, -1, event)">-</button><span>${qty}</span><button onclick="updateQuantity(${p.id}, 1, event)">+</button></div>`;
                 }
 
                 grid.innerHTML += `
-                    <div class="product-card">
+                    <div class="product-card" onclick="openProductDetails(${p.id}, event)">
                         ${stockOverlay}
                         ${discountTag}
                         <div class="delivery-tag" style="${discountTag ? 'top:40px;' : 'top:10px;'}">10 MINS</div>
@@ -3564,7 +3624,8 @@
             if (typeof applyGeneric3DTilt === 'function') applyGeneric3DTilt('.product-card', 6);
         }
 
-        function updateQuantity(productId, change) {
+        function updateQuantity(productId, change, event) {
+            if (event) event.stopPropagation();
             if (!cart[productId]) cart[productId] = 0;
             cart[productId] += change;
             if (cart[productId] <= 0) delete cart[productId];
@@ -3973,6 +4034,9 @@
         let _geocodeTimer = null;
         let _gpsWatchId = null;
         let _searchDebounce = null;
+        let _userPannedMap = false;
+        let _ownerMap = null;
+        let _ownerMarker = null;
 
         // Helper — default delivery address
         function _getDefaultDeliveryAddress() {
@@ -3986,9 +4050,13 @@
         // ─── OPEN MAP PICKER ─────────────────────────────
         function openMapPicker() {
             document.getElementById('gmap-overlay').classList.add('active');
+            _userPannedMap = false;
 
             if (_mapPickerMap) {
-                setTimeout(() => _mapPickerMap.invalidateSize(), 150);
+                setTimeout(() => {
+                    _mapPickerMap.invalidateSize();
+                    _startHighAccuracyGPS();
+                }, 150);
                 return;
             }
 
@@ -4013,6 +4081,13 @@
                     attribution: '\u00a9 OpenStreetMap',
                     maxZoom: 20, maxNativeZoom: 19
                 }).addTo(_mapPickerMap);
+
+                // Track manual interaction
+                _mapPickerMap.on('movestart', (e) => {
+                    if (e && e.originalEvent) {
+                        _userPannedMap = true;
+                    }
+                });
 
                 // Reverse-geocode whenever map stops moving
                 _mapPickerMap.on('moveend zoomend', () => {
@@ -4047,11 +4122,11 @@
                     const { latitude: lat, longitude: lng, accuracy } = pos.coords;
                     if (accuracy < bestAccuracy) {
                         bestAccuracy = accuracy;
-                        if (_mapPickerMap) {
+                        if (_mapPickerMap && !_userPannedMap) {
                             _mapPickerMap.setView([lat, lng],
                                 accuracy < 15 ? 19 : accuracy < 50 ? 18 : 17);
+                            _mapPickerCoords = { lat, lng };
                         }
-                        _mapPickerCoords = { lat, lng };
                         if (badgeTxt) badgeTxt.textContent = `GPS \u00b1${Math.round(accuracy)} m`;
                     }
                     // Good enough — stop watching
@@ -4064,8 +4139,10 @@
                 err => {
                     if (badge) badge.style.display = 'none';
                     // GPS denied — geocode Patna default
-                    _mapPickerCoords = { lat: 25.5941, lng: 85.1376 };
-                    _doReverseGeocode(25.5941, 85.1376);
+                    if (!_userPannedMap) {
+                        _mapPickerCoords = { lat: 25.5941, lng: 85.1376 };
+                        _doReverseGeocode(25.5941, 85.1376);
+                    }
                 },
                 { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
@@ -4081,6 +4158,7 @@
         }
 
         function goToMyLocation() {
+            _userPannedMap = false;
             _startHighAccuracyGPS();
         }
 
@@ -4193,23 +4271,74 @@
                     return;
                 }
                 const addrText = [house, street, landmark, city].filter(Boolean).join(', ');
-                addresses.push({
-                    text: addrText,
-                    lat: _mapPickerCoords ? _mapPickerCoords.lat : null,
-                    lng: _mapPickerCoords ? _mapPickerCoords.lng : null
-                });
-                _saveState(); // ← persist
-                updateCustomerDashboard();
-                closeMapPicker();
 
-                if (_pendingCheckoutType === 'khata') {
-                    _pendingCheckoutType = null;
-                    processCheckoutOrder('khata');
-                } else if (_pendingCheckoutType === 'payment_selection') {
-                    _pendingCheckoutType = null;
-                    openPaymentSelection();
-                } else {
-                    openFeatureScreen('address');
+                const confirmBtn = document.querySelector('.gmap-confirm-btn');
+                const originalText = confirmBtn ? confirmBtn.innerHTML : '';
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+                }
+
+                // Multi-stage forward geocoding fallback
+                const primaryParts = [street, landmark, city].filter(Boolean);
+                const secondaryParts = [street, city].filter(Boolean);
+
+                const doGeocode = (parts, fallbackFn) => {
+                    if (parts.length === 0) {
+                        fallbackFn();
+                        return;
+                    }
+                    const q = parts.join(', ');
+                    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&countrycodes=IN`, {
+                        headers: { 'Accept-Language': 'en' }
+                    })
+                    .then(r => r.json())
+                    .then(results => {
+                        if (results && results.length > 0) {
+                            const lat = parseFloat(results[0].lat);
+                            const lng = parseFloat(results[0].lon);
+                            saveManualAddressAndProceed(addrText, lat, lng);
+                        } else {
+                            fallbackFn();
+                        }
+                    })
+                    .catch(() => {
+                        fallbackFn();
+                    });
+                };
+
+                doGeocode(primaryParts, () => {
+                    doGeocode(secondaryParts, () => {
+                        let finalLat = _mapPickerCoords ? _mapPickerCoords.lat : null;
+                        let finalLng = _mapPickerCoords ? _mapPickerCoords.lng : null;
+                        saveManualAddressAndProceed(addrText, finalLat, finalLng);
+                    });
+                });
+
+                function saveManualAddressAndProceed(addrText, lat, lng) {
+                    addresses.push({
+                        text: addrText,
+                        lat: lat,
+                        lng: lng
+                    });
+                    _saveState(); // ← persist
+                    updateCustomerDashboard();
+                    closeMapPicker();
+
+                    if (confirmBtn) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.innerHTML = originalText;
+                    }
+
+                    if (_pendingCheckoutType === 'khata') {
+                        _pendingCheckoutType = null;
+                        processCheckoutOrder('khata');
+                    } else if (_pendingCheckoutType === 'payment_selection') {
+                        _pendingCheckoutType = null;
+                        openPaymentSelection();
+                    } else {
+                        openFeatureScreen('address');
+                    }
                 }
                 return;
             }
@@ -4239,7 +4368,7 @@
             }
         }
 
-        // ─── OWNER MAP (OpenStreetMap iframe) ──────────
+        // ─── OWNER MAP (Interactive Leaflet Map) ───────
         function openOwnerMap(address, lat, lng) {
             document.getElementById('owner-map-modal').classList.add('active');
             document.getElementById('owner-map-addr').textContent = address || 'Address not available';
@@ -4247,18 +4376,76 @@
                 ? `https://www.google.com/maps?q=${lat},${lng}&z=17`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || '')}`;
             document.getElementById('owner-gmaps-link').href = mapsUrl;
-            const canvas = document.getElementById('owner-map-canvas');
-            canvas.innerHTML = '';
-            if (lat && lat !== 'null' && lng && lng !== 'null') {
-                const latF = parseFloat(lat), lngF = parseFloat(lng), d = 0.004;
-                canvas.innerHTML = `<iframe src="https://www.openstreetmap.org/export/embed.html?bbox=${lngF - d},${latF - d},${lngF + d},${latF + d}&layer=mapnik&marker=${latF},${lngF}" style="width:100%;height:100%;border:none;" loading="lazy"></iframe>`;
-            } else {
-                canvas.innerHTML = `<iframe src="https://www.openstreetmap.org/export/embed.html?query=${encodeURIComponent(address || '')}&layer=mapnik" style="width:100%;height:100%;border:none;" loading="lazy"></iframe>`;
-            }
+            
+            setTimeout(() => {
+                const canvas = document.getElementById('owner-map-canvas');
+                
+                if (_ownerMap) {
+                    _ownerMap.remove();
+                    _ownerMap = null;
+                }
+                _ownerMarker = null;
+                canvas.innerHTML = '';
+                
+                const renderOwnerMap = (latVal, lngVal) => {
+                    _ownerMap = L.map(canvas, {
+                        center: [latVal, lngVal],
+                        zoom: 18,
+                        zoomControl: true,
+                        attributionControl: false
+                    });
+                    
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '\u00a9 OpenStreetMap',
+                        maxZoom: 20,
+                        maxNativeZoom: 19
+                    }).addTo(_ownerMap);
+                    
+                    const redMarkerIcon = L.divIcon({
+                        html: '<div style="display: flex; justify-content: center; align-items: flex-end; width: 24px; height: 40px;"><i class="fa-solid fa-location-dot" style="color: #ef4444; font-size: 2.5rem; text-shadow: 0 2px 4px rgba(0,0,0,0.2);"></i></div>',
+                        className: 'owner-custom-marker',
+                        iconSize: [24, 40],
+                        iconAnchor: [12, 40]
+                    });
+                    
+                    _ownerMarker = L.marker([latVal, lngVal], { icon: redMarkerIcon }).addTo(_ownerMap);
+                    
+                    _ownerMap.invalidateSize();
+                };
+
+                let latF = parseFloat(lat);
+                let lngF = parseFloat(lng);
+
+                if (!isNaN(latF) && !isNaN(lngF)) {
+                    renderOwnerMap(latF, lngF);
+                } else if (address) {
+                    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=IN`, {
+                        headers: { 'Accept-Language': 'en' }
+                    })
+                    .then(r => r.json())
+                    .then(results => {
+                        if (results && results.length > 0) {
+                            renderOwnerMap(parseFloat(results[0].lat), parseFloat(results[0].lon));
+                        } else {
+                            renderOwnerMap(25.5941, 85.1376); // Fallback to Patna
+                        }
+                    })
+                    .catch(() => {
+                        renderOwnerMap(25.5941, 85.1376); // Fallback to Patna
+                    });
+                } else {
+                    renderOwnerMap(25.5941, 85.1376); // Fallback to Patna
+                }
+            }, 300);
         }
 
         function closeOwnerMap() {
             document.getElementById('owner-map-modal').classList.remove('active');
+            if (_ownerMap) {
+                _ownerMap.remove();
+                _ownerMap = null;
+            }
+            _ownerMarker = null;
             document.getElementById('owner-map-canvas').innerHTML = '';
         }
 
@@ -4356,6 +4543,208 @@
                     element.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(0)';
                 });
             });
+        }
+
+        // =============================================
+        // CUSTOMER PRODUCT DETAILS & RECOMMENDATIONS
+        // =============================================
+        function getRecommendations(product) {
+            // 1. Customers Also Viewed (Upsell - same category, higher or similar price)
+            const sameCategory = inventory.filter(p => p.id !== product.id && p.category === product.category && p.inStock !== false);
+            sameCategory.sort((a, b) => {
+                const diffA = a.price - product.price;
+                const diffB = b.price - product.price;
+                if (diffA >= 0 && diffB < 0) return -1;
+                if (diffB >= 0 && diffA < 0) return 1;
+                return Math.abs(diffA) - Math.abs(diffB);
+            });
+            const alsoViewed = sameCategory.slice(0, 3);
+
+            // 2. Frequently Bought Together (Cross-sell - complementary categories)
+            let compCategories = [];
+            if (product.category === 'Vegetables') compCategories = ['Spices & Oils'];
+            else if (product.category === 'Dairy & Bakery') compCategories = ['Beverages', 'Staples'];
+            else if (product.category === 'Staples') compCategories = ['Spices & Oils', 'Dairy & Bakery'];
+            else if (product.category === 'Beverages') compCategories = ['Snacks & Drinks'];
+            else if (product.category === 'Snacks & Drinks') compCategories = ['Beverages'];
+            else if (product.category === 'Spices & Oils') compCategories = ['Staples', 'Vegetables'];
+            else compCategories = ['Care & Cleaning', 'Dairy & Bakery'];
+
+            const crossSell = inventory.filter(p => p.id !== product.id && compCategories.includes(p.category) && p.inStock !== false)
+                .sort(() => 0.5 - Math.random())
+                .slice(0, 3);
+
+            return { alsoViewed, crossSell };
+        }
+
+        function openProductDetails(productId, event) {
+            if (event && (event.target.tagName === 'BUTTON' || event.target.closest('.qty-controls') || event.target.closest('.add-btn'))) {
+                return;
+            }
+            
+            const p = inventory.find(i => i.id == productId);
+            if (!p) return;
+
+            _activeDetailsProduct = p;
+
+            document.getElementById('product-details-modal').classList.add('open');
+            document.getElementById('global-modal-overlay').style.display = 'block';
+
+            document.getElementById('details-prod-image').src = p.image;
+            document.getElementById('details-prod-name').textContent = p.name;
+            document.getElementById('details-prod-weight').textContent = p.weight;
+            document.getElementById('details-prod-description').textContent = p.description || 'Fresh and premium quality product delivered to your doorstep in 10 minutes.';
+            
+            const priceEl = document.getElementById('details-prod-price');
+            const mrpEl = document.getElementById('details-prod-mrp');
+            const discEl = document.getElementById('details-prod-discount');
+            
+            priceEl.textContent = `₹${p.price}`;
+            if (p.mrp && p.mrp > p.price) {
+                mrpEl.style.display = 'inline';
+                mrpEl.textContent = `₹${p.mrp}`;
+                discEl.style.display = 'inline-block';
+                discEl.textContent = `${Math.round(((p.mrp - p.price) / p.mrp) * 100)}% OFF`;
+            } else {
+                mrpEl.style.display = 'none';
+                discEl.style.display = 'none';
+            }
+
+            renderDetailsAction(p);
+
+            const ext = p.extendedDetails || {};
+            
+            const fillSpec = (id, val, prefix = '') => {
+                const el = document.getElementById(id);
+                if (val) {
+                    el.style.display = 'block';
+                    el.querySelector('.val').textContent = prefix + val;
+                } else {
+                    el.style.display = 'none';
+                }
+            };
+
+            fillSpec('details-spec-ingredients', ext.ingredients);
+            fillSpec('details-spec-dimensions', ext.dimensions);
+            fillSpec('details-spec-care', ext.care);
+            fillSpec('details-spec-warranty', ext.warranty);
+
+            const uspsEl = document.getElementById('details-spec-usps');
+            const uspsContainer = document.getElementById('details-spec-usps-container');
+            const usps = ext.usps || [];
+            uspsEl.innerHTML = '';
+            if (Array.isArray(usps) && usps.length > 0) {
+                uspsContainer.style.display = 'block';
+                usps.forEach(u => {
+                    const li = document.createElement('li');
+                    li.style.display = 'flex';
+                    li.style.alignItems = 'center';
+                    li.style.gap = '8px';
+                    li.innerHTML = `<span style="color: var(--primary); font-weight: bold;">✓</span> ${u}`;
+                    uspsEl.appendChild(li);
+                });
+            } else {
+                uspsContainer.style.display = 'none';
+            }
+
+            const tableEl = document.getElementById('details-spec-table');
+            const tableContainer = document.getElementById('details-spec-table-container');
+            const specs = ext.specs || {};
+            tableEl.innerHTML = '';
+            const specEntries = Object.entries(specs);
+            if (specEntries.length > 0) {
+                tableContainer.style.display = 'block';
+                specEntries.forEach(([k, v]) => {
+                    const row = document.createElement('tr');
+                    row.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
+                    row.innerHTML = `
+                        <td style="padding: 8px 10px; font-weight: 700; color: #cbd5e1; width: 35%; background: transparent;">${k}</td>
+                        <td style="padding: 8px 10px; color: #f8fafc; font-weight: 500;">${v}</td>
+                    `;
+                    tableEl.appendChild(row);
+                });
+            } else {
+                tableContainer.style.display = 'none';
+            }
+
+            document.querySelector('.details-accordion').removeAttribute('open');
+
+            renderDetailsRecommendations(p);
+        }
+
+        function closeDetailsModal() {
+            document.getElementById('product-details-modal').classList.remove('open');
+            document.getElementById('global-modal-overlay').style.display = 'none';
+            _activeDetailsProduct = null;
+        }
+
+        function renderDetailsAction(p) {
+            const container = document.getElementById('details-action-container');
+            const qty = cart[p.id] || 0;
+            
+            if (p.inStock === false) {
+                container.innerHTML = `<button class="btn-full" style="background:#e2e8f0; color:#94a3b8; border:none; cursor:not-allowed;" disabled>OUT OF STOCK</button>`;
+            } else {
+                container.innerHTML = qty === 0
+                    ? `<button class="btn-full" onclick="updateDetailsQty(${p.id}, 1)" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; border: none; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.3); font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border-radius: 8px; height: 44px; width: 100%;"><i class="fa-solid fa-cart-plus"></i> Add to Cart</button>`
+                    : `<div class="details-qty-container">
+                            <button onclick="updateDetailsQty(${p.id}, -1)">-</button>
+                            <span>${qty}</span>
+                            <button onclick="updateDetailsQty(${p.id}, 1)">+</button>
+                       </div>`;
+            }
+        }
+
+        function updateDetailsQty(productId, change) {
+            updateQuantity(productId, change);
+            const p = inventory.find(i => i.id == productId);
+            if (p) renderDetailsAction(p);
+        }
+
+        function renderDetailsRecommendations(product) {
+            const { alsoViewed, crossSell } = getRecommendations(product);
+            
+            const makeRecHTML = (list) => {
+                if (list.length === 0) {
+                    return `<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px 0;">No recommendations available.</div>`;
+                }
+                return list.map(p => {
+                    const qty = cart[p.id] || 0;
+                    const btnHTML = qty === 0
+                        ? `<button class="add-btn" onclick="updateRecQty(${p.id}, 1, event)" style="padding: 2px 8px; font-size: 0.7rem; height: auto; border-radius: 4px;">ADD</button>`
+                        : `<div class="qty-controls" style="height:24px; padding:2px; border-radius:4px; font-size:0.75rem;"><button onclick="updateRecQty(${p.id}, -1, event)" style="width:20px; font-weight:800;">-</button><span style="padding:0 5px;">${qty}</span><button onclick="updateRecQty(${p.id}, 1, event)" style="width:20px; font-weight:800;">+</button></div>`;
+                        
+                    return `
+                        <div class="rec-card" onclick="openProductDetails(${p.id}, event)">
+                            <div style="width:100%; height:80px; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:6px; background:#f8fafc; border: 1px solid #f1f5f9;">
+                                <img src="${p.image}" alt="${p.name}" style="max-width:100%; max-height:100%; object-fit:contain;">
+                            </div>
+                            <div class="rec-card-name" title="${p.name}">${p.name}</div>
+                            <div class="rec-card-weight">${p.weight}</div>
+                            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:2px;">
+                                <div class="rec-card-price">₹${p.price}</div>
+                                ${btnHTML}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            };
+
+            document.getElementById('details-cross-sell').innerHTML = makeRecHTML(crossSell);
+            document.getElementById('details-also-viewed').innerHTML = makeRecHTML(alsoViewed);
+            
+            if (typeof applyGeneric3DTilt === 'function') {
+                applyGeneric3DTilt('.rec-card', 4);
+            }
+        }
+
+        function updateRecQty(productId, change, event) {
+            if (event) event.stopPropagation();
+            updateQuantity(productId, change);
+            if (_activeDetailsProduct) {
+                renderDetailsRecommendations(_activeDetailsProduct);
+                renderDetailsAction(_activeDetailsProduct);
+            }
         }
 
         // Initialize visual features
