@@ -1666,7 +1666,7 @@
                 if (p.qty === undefined) p.qty = qty;
                 list.innerHTML += `
                 <div class="ow-product-row" id="owprod-${p.id}">
-                    <img src="${p.image}" class="ow-prod-img" onerror="this.src='https://via.placeholder.com/52x52/f1f5f9/94a3b8?text=📦'">
+                    <img src="${p.image}" class="ow-prod-img" loading="lazy" onerror="this.src='https://via.placeholder.com/52x52/f1f5f9/94a3b8?text=📦'">
                     <div class="ow-prod-info">
                         <div class="ow-prod-name">${p.name}</div>
                         <div class="ow-prod-meta">₹${p.price} &nbsp;·&nbsp; ${p.weight} &nbsp;·&nbsp; ${p.category}</div>
@@ -3611,7 +3611,7 @@
                         ${stockOverlay}
                         ${discountTag}
                         <div class="delivery-tag" style="${discountTag ? 'top:40px;' : 'top:10px;'}">10 MINS</div>
-                        <div class="product-image"><img src="${p.image}" alt="${p.name}"></div>
+                        <div class="product-image"><img src="${p.image}" alt="${p.name}" loading="lazy"></div>
                         <div class="product-title">${p.name}</div>
                         <div class="product-weight">${p.weight}</div>
                         <div class="price-row">
@@ -4482,6 +4482,9 @@
         // DYNAMIC 3D CARD TILT ENGINE
         // =============================================
         function init3DTilt() {
+            const isMobileOrTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 768);
+            if (isMobileOrTouch) return;
+
             const card = document.querySelector('.login-card');
             if (!card) return;
 
@@ -4522,6 +4525,9 @@
 
         // Generic 3D tilt applicator for lists/cards
         function applyGeneric3DTilt(selector, maxTilt = 8) {
+            const isMobileOrTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 768);
+            if (isMobileOrTouch) return;
+
             document.querySelectorAll(selector).forEach(element => {
                 if (element.dataset.tiltInitialized) return;
                 element.dataset.tiltInitialized = "true";
@@ -4717,7 +4723,7 @@
                     return `
                         <div class="rec-card" onclick="openProductDetails(${p.id}, event)">
                             <div style="width:100%; height:80px; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:6px; background:#f8fafc; border: 1px solid #f1f5f9;">
-                                <img src="${p.image}" alt="${p.name}" style="max-width:100%; max-height:100%; object-fit:contain;">
+                                <img src="${p.image}" alt="${p.name}" loading="lazy" style="max-width:100%; max-height:100%; object-fit:contain;">
                             </div>
                             <div class="rec-card-name" title="${p.name}">${p.name}</div>
                             <div class="rec-card-weight">${p.weight}</div>

@@ -4947,6 +4947,18 @@
         .three-dot-wrapper {
             position: relative;
         }
+
+        /* Mobile Performance Optimization: Disable heavy blur background animations on mobile */
+        @media (max-width: 768px) {
+            .blob-green,
+            .blob-purple,
+            .blob-orange,
+            .blob-blue,
+            .login-glow-ball {
+                display: none !important;
+                animation: none !important;
+            }
+        }
     </style>
 </head>
 
