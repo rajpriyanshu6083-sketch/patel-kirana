@@ -647,7 +647,9 @@ class PatelKiranaTestCase(unittest.TestCase):
         payload = {
             "product_id": 1,
             "in_stock": 0,
-            "price": 25.0
+            "price": 25.0,
+            "description": "Test Description",
+            "extended_details": {"ingredients": "Test Ingredients", "dimensions": "10x10 cm"}
         }
         with self.client.post('/api/owner/update-inventory',
                                     data=json.dumps(payload),
@@ -667,6 +669,10 @@ class PatelKiranaTestCase(unittest.TestCase):
             self.assertEqual(override['product_id'], 1)
             self.assertEqual(override['in_stock'], 0)
             self.assertEqual(override['price'], 25.0)
+            self.assertEqual(override['description'], "Test Description")
+            ext = json.loads(override['extended_details'])
+            self.assertEqual(ext['ingredients'], "Test Ingredients")
+            self.assertEqual(ext['dimensions'], "10x10 cm")
 
         # 4. Try posting with missing parameters (should return 400)
         bad_payload = {
@@ -966,6 +972,29 @@ class PatelKiranaTestCase(unittest.TestCase):
             data = json.loads(response.data)
             self.assertTrue(data['is_logged_in'])
             self.assertTrue(data['is_owner'])
+
+    def test_sse_stream_unauthorized(self):
+        """Verify that stream endpoint returns 403 for unauthorized users"""
+        with self.client.get('/api/stream') as response:
+            self.assertEqual(response.status_code, 403)
+
+    def test_broadcast_sse_event(self):
+        """Verify that broadcast_sse_event puts messages in registered client queues"""
+        import queue
+        test_queue = queue.Queue()
+        app_module.sse_clients.append(test_queue)
+        try:
+            test_data = {"test_key": "test_val"}
+            app_module.broadcast_sse_event("test_event", test_data)
+            
+            # The queue should have the published message
+            self.assertFalse(test_queue.empty())
+            message = json.loads(test_queue.get())
+            self.assertEqual(message["event"], "test_event")
+            self.assertEqual(message["data"], test_data)
+        finally:
+            if test_queue in app_module.sse_clients:
+                app_module.sse_clients.remove(test_queue)
 
 
 if __name__ == '__main__':

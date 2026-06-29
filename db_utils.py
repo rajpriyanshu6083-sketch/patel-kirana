@@ -59,6 +59,8 @@ def init_db():
                 weight      TEXT,
                 image       TEXT,
                 is_deleted  INTEGER DEFAULT 0,
+                description TEXT,
+                extended_details TEXT,
                 updated_at  REAL NOT NULL
             )
         ''')
@@ -69,7 +71,9 @@ def init_db():
             ('mrp', 'REAL'),
             ('weight', 'TEXT'),
             ('image', 'TEXT'),
-            ('is_deleted', 'INTEGER DEFAULT 0')
+            ('is_deleted', 'INTEGER DEFAULT 0'),
+            ('description', 'TEXT'),
+            ('extended_details', 'TEXT')
         ]:
             try:
                 conn.execute(f"ALTER TABLE inventory_overrides ADD COLUMN {col_name} {col_type}")
@@ -158,12 +162,12 @@ def load_customer(phone: str):
         'khata_bal': row[3] or 0
     }
 
-def save_inventory_override(product_id: int, in_stock: int, price: float = None, name: str = None, category: str = None, mrp: float = None, weight: str = None, image: str = None, is_deleted: int = 0):
+def save_inventory_override(product_id: int, in_stock: int, price: float = None, name: str = None, category: str = None, mrp: float = None, weight: str = None, image: str = None, is_deleted: int = 0, description: str = None, extended_details: str = None):
     """Upsert stock status and details for a product override."""
     with get_db() as conn:
         conn.execute(
-            '''INSERT INTO inventory_overrides (product_id, in_stock, price, name, category, mrp, weight, image, is_deleted, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            '''INSERT INTO inventory_overrides (product_id, in_stock, price, name, category, mrp, weight, image, is_deleted, description, extended_details, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(product_id) DO UPDATE SET
                    in_stock=excluded.in_stock,
                    price=excluded.price,
@@ -173,15 +177,17 @@ def save_inventory_override(product_id: int, in_stock: int, price: float = None,
                    weight=excluded.weight,
                    image=excluded.image,
                    is_deleted=excluded.is_deleted,
+                   description=excluded.description,
+                   extended_details=excluded.extended_details,
                    updated_at=excluded.updated_at''',
-            (product_id, in_stock, price, name, category, mrp, weight, image, is_deleted, time.time())
+            (product_id, in_stock, price, name, category, mrp, weight, image, is_deleted, description, extended_details, time.time())
         )
         conn.commit()
 
 def load_inventory_overrides() -> list:
     """Return list of all inventory overrides."""
     with get_db() as conn:
-        rows = conn.execute('SELECT product_id, in_stock, price, name, category, mrp, weight, image, is_deleted FROM inventory_overrides').fetchall()
+        rows = conn.execute('SELECT product_id, in_stock, price, name, category, mrp, weight, image, is_deleted, description, extended_details FROM inventory_overrides').fetchall()
     return [{
         'product_id': r[0],
         'in_stock': r[1],
@@ -191,7 +197,9 @@ def load_inventory_overrides() -> list:
         'mrp': r[5],
         'weight': r[6],
         'image': r[7],
-        'is_deleted': r[8]
+        'is_deleted': r[8],
+        'description': r[9],
+        'extended_details': r[10]
     } for r in rows]
 
 def save_support_ticket(ticket_id: str, customer_name: str, customer_phone: str, customer_email: str, issue: str, category: str, status: str = 'pending', created_at: float = None):
@@ -228,3 +236,40 @@ def resolve_support_ticket(ticket_id: str):
     with get_db() as conn:
         conn.execute("UPDATE support_tickets SET status = 'resolved' WHERE id = ?", (ticket_id,))
         conn.commit()
+
+def load_owner(username: str) -> dict:
+    """Return owner details or None."""
+    with get_db() as conn:
+        row = conn.execute(
+            'SELECT username, password, name, email, phone FROM owners WHERE username = ?',
+            (username,)
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        'username': row[0],
+        'password': row[1],
+        'name': row[2],
+        'email': row[3],
+        'phone': row[4]
+    }
+
+def save_owner(username: str, password_hash: str, name: str, email: str, phone: str):
+    """Save an owner profile."""
+    with get_db() as conn:
+        conn.execute(
+            '''INSERT OR REPLACE INTO owners (username, password, name, email, phone, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)''',
+            (username, password_hash, name, email, phone, time.time())
+        )
+        conn.commit()
+
+def update_owner_password(username: str, new_password_hash: str):
+    """Update owner password."""
+    with get_db() as conn:
+        conn.execute(
+            'UPDATE owners SET password = ? WHERE username = ?',
+            (new_password_hash, username)
+        )
+        conn.commit()
+

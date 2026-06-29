@@ -190,6 +190,7 @@
         let freebieClaimed = false;
         let currentUser = '';
         let isOwner = false;
+        let eventSource = null;
         let currentlyInAdminView = false;
         let _pendingCheckoutType = null;
         let _activeDetailsProduct = null;
@@ -265,6 +266,7 @@
             }
 
             function forceLogout() {
+                closeRealTimeConnection();
                 cart = {};
                 addresses = [];
                 khataBalance = 0;
@@ -419,6 +421,7 @@
                         updateCustomerDashboard();
                     }, 50);
                 }
+                initRealTimeConnection();
             }
         }
 
@@ -470,7 +473,6 @@
                 }, 300);
             } else {
                 statusDiv.style.display = 'none';
-                newFields.style.display = 'none';
                 sendBtn.innerText = "Send OTP";
             }
         }
@@ -1288,9 +1290,11 @@
                     welcomeText.style.opacity = '0';
                 }, 400);
             }, 900);
+            initRealTimeConnection();
         }
 
         function logout() {
+            closeRealTimeConnection();
             // Call backend logout to terminate session
             fetch('/api/logout', { method: 'POST' }).catch(() => {});
 
@@ -1440,31 +1444,34 @@
         }
 
         // ── Orders — fully live from backend ──────────────────────
-        function renderOwnerOrders() {
+        function renderOwnerOrders(isSilent = false) {
             const list = document.getElementById('ow-orders-list');
             const statsEl = document.getElementById('ow-order-stats');
-            let orderSkeleton = '';
-            for (let i = 0; i < 3; i++) {
-                orderSkeleton += `
-                    <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div class="skeleton-shimmer" style="width: 120px; height: 14px; border-radius: 4px;"></div>
-                            <div class="skeleton-shimmer" style="width: 70px; height: 18px; border-radius: 9px;"></div>
+            
+            if (!isSilent) {
+                let orderSkeleton = '';
+                for (let i = 0; i < 3; i++) {
+                    orderSkeleton += `
+                        <div style="padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div class="skeleton-shimmer" style="width: 120px; height: 14px; border-radius: 4px;"></div>
+                                <div class="skeleton-shimmer" style="width: 70px; height: 18px; border-radius: 9px;"></div>
+                            </div>
+                            <div class="skeleton-shimmer" style="width: 80%; height: 12px; border-radius: 4px;"></div>
+                            <div class="skeleton-shimmer" style="width: 90%; height: 12px; border-radius: 4px;"></div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                                <div class="skeleton-shimmer" style="width: 60px; height: 16px; border-radius: 4px;"></div>
+                                <div class="skeleton-shimmer" style="width: 50px; height: 12px; border-radius: 3px;"></div>
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 8px;">
+                                <div class="skeleton-shimmer" style="flex: 1; height: 32px; border-radius: 6px;"></div>
+                                <div class="skeleton-shimmer" style="flex: 1; height: 32px; border-radius: 6px;"></div>
+                            </div>
                         </div>
-                        <div class="skeleton-shimmer" style="width: 80%; height: 12px; border-radius: 4px;"></div>
-                        <div class="skeleton-shimmer" style="width: 90%; height: 12px; border-radius: 4px;"></div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                            <div class="skeleton-shimmer" style="width: 60px; height: 16px; border-radius: 4px;"></div>
-                            <div class="skeleton-shimmer" style="width: 50px; height: 12px; border-radius: 3px;"></div>
-                        </div>
-                        <div style="display: flex; gap: 10px; margin-top: 8px;">
-                            <div class="skeleton-shimmer" style="flex: 1; height: 32px; border-radius: 6px;"></div>
-                            <div class="skeleton-shimmer" style="flex: 1; height: 32px; border-radius: 6px;"></div>
-                        </div>
-                    </div>
-                `;
+                    `;
+                }
+                list.innerHTML = orderSkeleton;
             }
-            list.innerHTML = orderSkeleton;
 
             fetch('/api/owner/orders')
                 .then(r => r.json())
@@ -3651,6 +3658,17 @@
             setTimeout(() => badge.style.transform = "scale(1)", 200);
         }
 
+        function updateCartCount() {
+            let totalItems = 0;
+            Object.keys(cart).forEach(id => {
+                totalItems += cart[id] || 0;
+            });
+            const badge = document.getElementById('cart-count');
+            if (badge) {
+                badge.innerText = totalItems;
+            }
+        }
+
         function claimFreebie() {
             freebieClaimed = true;
             renderCartContent();
@@ -4750,6 +4768,84 @@
             if (_activeDetailsProduct) {
                 renderDetailsRecommendations(_activeDetailsProduct);
                 renderDetailsAction(_activeDetailsProduct);
+            }
+        }
+
+        function initRealTimeConnection() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource('/api/stream');
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const payload = JSON.parse(event.data);
+                    handleRealTimeEvent(payload.event, payload.data);
+                } catch (err) {
+                    console.error("Failed to parse SSE message:", err);
+                }
+            };
+
+            eventSource.onerror = function(err) {
+                console.warn("SSE stream disconnected. EventSource will reconnect automatically.");
+            };
+        }
+
+        function closeRealTimeConnection() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+        }
+
+        function handleRealTimeEvent(event_type, data) {
+            console.log("Real-time event received:", event_type, data);
+            
+            if (event_type === 'new_order') {
+                if (isOwner) {
+                    showToast(`🔔 New Order placed by ${data.customer_name}! (₹${data.total})`, 'info');
+                    renderOwnerOrders(true);
+                } else {
+                    if (data.customer_phone === userProfile.contact) {
+                        updateCustomerDashboard();
+                    }
+                }
+            } else if (event_type === 'order_updated') {
+                if (isOwner) {
+                    renderOwnerOrders(true);
+                } else {
+                    if (data.customer_phone === userProfile.contact || data.customer_email === userProfile.email) {
+                        updateCustomerDashboard();
+                        showToast(`📦 Order #${data.id.slice(0, 8).toUpperCase()} updated: ${data.order_status}`, 'success');
+                        
+                        // If UPI payment modal is open for this order, check status immediately
+                        const modalTitle = document.getElementById('modal-title');
+                        if (modalTitle && (modalTitle.innerText.includes('Payment') || modalTitle.innerText.includes('Cart'))) {
+                            if (data.payment_status === 'paid_upi' || data.payment_status === 'rejected') {
+                                pollPaymentStatus(data.id);
+                            }
+                        }
+                    }
+                }
+            } else if (event_type === 'inventory_updated') {
+                fetch('/api/inventory/overrides')
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.success) {
+                            _applyInventoryOverrides(res.overrides);
+                            filterProducts();
+                            if (isOwner) {
+                                renderOwnerProducts();
+                            }
+                        }
+                    })
+                    .catch(() => {});
+            } else if (event_type === 'ticket_updated') {
+                if (isOwner) {
+                    showToast(`🎫 Support Ticket updated!`, 'info');
+                    renderOwnerSupport();
+                }
             }
         }
 

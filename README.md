@@ -35,7 +35,7 @@ python app.py
 
 Open the app in your browser at:
 
-- `http://127.0.0.1:5000`
+- `https://patel-kirana-production.up.railway.app/`
 
 ## Project structure
 

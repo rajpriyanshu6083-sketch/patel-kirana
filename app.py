@@ -12,7 +12,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, Response
+import queue
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent / '.env'
@@ -41,6 +42,21 @@ class RateLimiter:
                 self.history[key].append(now)
                 return True
             return False
+
+# SSE real-time clients registry and broadcast utility
+sse_clients = []
+
+def broadcast_sse_event(event_type: str, data: dict):
+    """Publish a real-time event to all active listener queues."""
+    payload = json.dumps({'event': event_type, 'data': data})
+    for q in list(sse_clients):
+        try:
+            q.put(payload)
+        except Exception:
+            try:
+                sse_clients.remove(q)
+            except ValueError:
+                pass
 
 # Initialize rate limiters
 import time
@@ -108,6 +124,36 @@ def api_session_check():
     })
     resp.headers['Cache-Control'] = 'no-store'
     return resp
+
+
+@app.route('/api/stream')
+def sse_stream():
+    """Server-Sent Events endpoint to stream live order/inventory changes."""
+    is_owner = session.get('is_owner', False)
+    customer_phone = session.get('customer_phone', None)
+    
+    if not is_owner and not customer_phone:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+    def event_generator():
+        q = queue.Queue()
+        sse_clients.append(q)
+        try:
+            yield "retry: 5000\n\n"
+            while True:
+                try:
+                    payload = q.get(timeout=30)
+                    yield f"data: {payload}\n\n"
+                except queue.Empty:
+                    yield ": keep-alive\n\n"
+        finally:
+            try:
+                sse_clients.remove(q)
+            except ValueError:
+                pass
+
+    return Response(event_generator(), mimetype='text/event-stream')
+
 
 
 @app.route('/')
@@ -246,160 +292,39 @@ def api_verify_otp():
 #  PERSISTENT STORAGE  (SQLite)
 # ──────────────────────────────────────────────────────────────
 import uuid, time
-from contextlib import contextmanager
 
 if os.path.exists('/app/data'):
     DB_PATH = Path('/app/data/patel_data.db')
 else:
     DB_PATH = Path(__file__).parent / 'patel_data.db'
 
-@contextmanager
 def _get_db():
-    """Open a thread-local SQLite connection with WAL mode for concurrency, ensuring it is closed."""
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('PRAGMA foreign_keys=ON')
-    try:
-        with conn:
-            yield conn
-    finally:
-        conn.close()
+    return db_utils.get_db()
 
 def _init_db():
-    """Create tables if they don't exist and load data into memory."""
-    with _get_db() as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS orders (
-                id          TEXT PRIMARY KEY,
-                data        TEXT NOT NULL,
-                created_at  REAL NOT NULL
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS customers (
-                phone       TEXT PRIMARY KEY,
-                email       TEXT,
-                name        TEXT,
-                addresses   TEXT DEFAULT '[]',
-                khata_bal   REAL DEFAULT 0,
-                first_seen  REAL NOT NULL
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS inventory_overrides (
-                product_id  INTEGER PRIMARY KEY,
-                in_stock    INTEGER NOT NULL DEFAULT 1,
-                price       REAL,
-                name        TEXT,
-                category    TEXT,
-                mrp         REAL,
-                weight      TEXT,
-                image       TEXT,
-                is_deleted  INTEGER DEFAULT 0,
-                updated_at  REAL NOT NULL
-            )
-        ''')
-        # Check and alter table to add columns if they don't exist
-        for col_name, col_type in [
-            ('name', 'TEXT'),
-            ('category', 'TEXT'),
-            ('mrp', 'REAL'),
-            ('weight', 'TEXT'),
-            ('image', 'TEXT'),
-            ('is_deleted', 'INTEGER DEFAULT 0')
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE inventory_overrides ADD COLUMN {col_name} {col_type}")
-            except sqlite3.OperationalError:
-                pass
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS support_tickets (
-                id            TEXT PRIMARY KEY,
-                customer_name TEXT NOT NULL,
-                customer_phone TEXT NOT NULL,
-                customer_email TEXT,
-                issue         TEXT NOT NULL,
-                category      TEXT NOT NULL,
-                status        TEXT NOT NULL DEFAULT 'pending',
-                created_at    REAL NOT NULL
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS owners (
-                username    TEXT PRIMARY KEY,
-                password    TEXT NOT NULL,
-                name        TEXT,
-                email       TEXT,
-                phone       TEXT,
-                created_at  REAL NOT NULL
-            )
-        ''')
-        admin_exists = conn.execute("SELECT 1 FROM owners WHERE username = 'admin'").fetchone()
-        if not admin_exists:
-            import hashlib, time
-            hashed = hashlib.sha256('admin'.encode()).hexdigest()
-            conn.execute(
-                "INSERT INTO owners (username, password, name, email, phone, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                ('admin', hashed, 'Owner Admin', 'owner@patelgroceries.com', '+91 0000000000', time.time())
-            )
-        conn.commit()
-    # Load persisted orders into the in-memory dict
+    db_utils.init_db()
     _reload_orders_from_db()
-    logger.info(f"DB initialised at {DB_PATH}")
 
 def _reload_orders_from_db():
-    """Populate the global `orders` dict from SQLite."""
     global orders
-    with _get_db() as conn:
-        rows = conn.execute('SELECT id, data FROM orders').fetchall()
-    orders = {row[0]: json.loads(row[1]) for row in rows}
+    orders = db_utils.load_all_orders()
     logger.info(f"Loaded {len(orders)} orders from DB")
 
 def _save_order(order: dict):
-    """Upsert a single order into SQLite (called after every mutation)."""
-    with _get_db() as conn:
-        conn.execute(
-            'INSERT OR REPLACE INTO orders (id, data, created_at) VALUES (?, ?, ?)',
-            (order['id'], json.dumps(order), order.get('created_at', time.time()))
-        )
-        conn.commit()
+    db_utils.save_order(order)
 
 def _delete_order(order_id: str):
-    """Permanently remove an order from SQLite."""
-    with _get_db() as conn:
-        conn.execute('DELETE FROM orders WHERE id = ?', (order_id,))
-        conn.commit()
+    db_utils.delete_order(order_id)
 
 def _save_customer(phone: str, email: str, name: str, addresses: list, khata_bal: float):
-    """Upsert customer profile data (called on login / address / khata change)."""
-    with _get_db() as conn:
-        conn.execute(
-            '''INSERT INTO customers (phone, email, name, addresses, khata_bal, first_seen)
-               VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(phone) DO UPDATE SET
-                   email=excluded.email, name=excluded.name,
-                   addresses=excluded.addresses, khata_bal=excluded.khata_bal''',
-            (phone, email, name, json.dumps(addresses), khata_bal, time.time())
-        )
-        conn.commit()
+    db_utils.save_customer(phone, email, name, addresses, khata_bal)
 
 def _load_customer(phone: str):
-    """Return saved customer data or None."""
-    with _get_db() as conn:
-        row = conn.execute(
-            'SELECT email, name, addresses, khata_bal FROM customers WHERE phone = ?',
-            (phone,)
-        ).fetchone()
-    if not row:
-        return None
-    return {
-        'email': row[0], 'name': row[1],
-        'addresses': json.loads(row[2] or '[]'),
-        'khata_bal': row[3] or 0
-    }
+    return db_utils.load_customer(phone)
 
 # Initialise DB on import
 _init_db()
+
 
 # ──────────────────────────────────────────────────────────────
 #  ORDER MANAGEMENT  (memory-backed, SQLite-persisted)
@@ -502,6 +427,7 @@ def api_place_order():
 
     orders[order_id] = order
     _save_order(order)   # ← persist immediately
+    broadcast_sse_event('new_order', order)
     logger.info(f"Order placed & saved: {order_id} | {payment_method} | ₹{total}")
 
     # Notify owner about every new order
@@ -619,6 +545,7 @@ def api_owner_verify_payment():
     else:
         return jsonify({'success': False, 'message': 'Invalid action.'}), 400
 
+    broadcast_sse_event('order_updated', order)
     return jsonify({'success': True, 'message': msg, 'order': order})
 
 
@@ -670,6 +597,7 @@ def api_owner_update_status():
                 f"Total paid: ₹{order['total']}\n\nSee you again soon!\n\n— Patel Groceries Team"
             )
 
+    broadcast_sse_event('order_updated', order)
     return jsonify({'success': True, 'message': f'Order moved to {new_status}.', 'order': order})
 
 
@@ -701,6 +629,7 @@ def api_owner_cancel_order():
             f"We apologise for the inconvenience.\n\n\u2014 Patel Groceries Team"
         )
 
+    broadcast_sse_event('order_updated', order)
     return jsonify({'success': True, 'message': 'Order cancelled. Customer notified.'})
 
 
@@ -716,20 +645,14 @@ def api_owner_register():
     if not username or not password:
         return jsonify({'success': False, 'message': 'Username and Password are required.'}), 400
 
-    import hashlib, time
+    import hashlib
     hashed_pass = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
     try:
-        with _get_db() as conn:
-            row = conn.execute('SELECT 1 FROM owners WHERE username = ?', (username,)).fetchone()
-            if row:
-                return jsonify({'success': False, 'message': 'Username is already taken.'}), 400
+        if db_utils.load_owner(username):
+            return jsonify({'success': False, 'message': 'Username is already taken.'}), 400
 
-            conn.execute(
-                'INSERT INTO owners (username, password, name, email, phone, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-                (username, hashed_pass, name, email, phone, time.time())
-            )
-            conn.commit()
+        db_utils.save_owner(username, hashed_pass, name, email, phone)
     except Exception as e:
         logger.error(f"Owner registration error: {str(e)}")
         return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
@@ -756,19 +679,15 @@ def api_owner_login():
     hashed_pass = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
     try:
-        with _get_db() as conn:
-            row = conn.execute(
-                'SELECT name, email, phone FROM owners WHERE username = ? AND password = ?',
-                (username, hashed_pass)
-            ).fetchone()
-            if not row:
-                return jsonify({'success': False, 'message': 'Invalid username or password.'}), 401
-            
-            owner_info = {
-                'name': row[0],
-                'email': row[1],
-                'phone': row[2]
-            }
+        owner = db_utils.load_owner(username)
+        if not owner or owner['password'] != hashed_pass:
+            return jsonify({'success': False, 'message': 'Invalid username or password.'}), 401
+        
+        owner_info = {
+            'name': owner['name'],
+            'email': owner['email'],
+            'phone': owner['phone']
+        }
     except Exception as e:
         logger.error(f"Owner login error: {str(e)}")
         return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
@@ -792,16 +711,12 @@ def api_owner_forgot_password_send():
             return jsonify({'success': False, 'message': 'Too many password reset requests. Please try again later.'}), 429
 
     try:
-        with _get_db() as conn:
-            row = conn.execute(
-                'SELECT email, name FROM owners WHERE username = ?',
-                (username,)
-            ).fetchone()
-            if not row:
-                return jsonify({'success': False, 'message': 'Username not found.'}), 404
-            
-            email = row[0]
-            name = row[1]
+        owner = db_utils.load_owner(username)
+        if not owner:
+            return jsonify({'success': False, 'message': 'Username not found.'}), 404
+        
+        email = owner['email']
+        name = owner['name']
     except Exception as e:
         logger.error(f"Owner forgot password database query error: {str(e)}")
         return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
@@ -835,6 +750,7 @@ def api_owner_forgot_password_send():
     return jsonify({'success': True, 'message': 'Password reset verification code sent to your registered email.'})
 
 
+
 @app.route('/api/owner/reset-password', methods=['POST'])
 def api_owner_reset_password():
     data = request.get_json() or {}
@@ -857,12 +773,7 @@ def api_owner_reset_password():
     hashed_pass = hashlib.sha256(new_password.encode('utf-8')).hexdigest()
 
     try:
-        with _get_db() as conn:
-            conn.execute(
-                'UPDATE owners SET password = ? WHERE username = ?',
-                (hashed_pass, username)
-            )
-            conn.commit()
+        db_utils.update_owner_password(username, hashed_pass)
     except Exception as e:
         logger.error(f"Owner password update database error: {str(e)}")
         return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
@@ -871,6 +782,7 @@ def api_owner_reset_password():
     session.pop('owner_reset_username', None)
 
     return jsonify({'success': True, 'message': 'Password reset successfully. Please login with your new password.'})
+
 
 
 
@@ -965,6 +877,8 @@ def api_owner_update_inventory():
     weight = data.get('weight')
     image = data.get('image')
     is_deleted = data.get('is_deleted', 0)
+    description = data.get('description')
+    extended_details = data.get('extended_details')
 
     if product_id is None or in_stock is None:
         return jsonify({'success': False, 'message': 'product_id and in_stock are required'}), 400
@@ -989,11 +903,27 @@ def api_owner_update_inventory():
     except (ValueError, TypeError):
         is_deleted_val = 0
 
+    description_val = str(description).strip() if description is not None else None
+    
+    extended_details_val = None
+    if extended_details is not None:
+        if isinstance(extended_details, dict):
+            extended_details_val = json.dumps(extended_details)
+        else:
+            extended_details_val = str(extended_details).strip()
+
     try:
         db_utils.save_inventory_override(
             product_id_val, in_stock_val, price_val,
-            name_val, category_val, mrp_val, weight_val, image_val, is_deleted_val
+            name_val, category_val, mrp_val, weight_val, image_val, is_deleted_val,
+            description_val, extended_details_val
         )
+        broadcast_sse_event('inventory_updated', {
+            'product_id': product_id_val,
+            'in_stock': in_stock_val,
+            'price': price_val,
+            'is_deleted': is_deleted_val
+        })
         return jsonify({'success': True, 'message': 'Inventory override saved successfully'})
     except Exception as e:
         logger.error(f"Error saving inventory override: {e}")
@@ -1031,6 +961,7 @@ def api_support_create():
         logger.error(f"Error creating support ticket: {e}")
         return jsonify({'success': False, 'message': 'Database error occurred.'}), 500
 
+    broadcast_sse_event('ticket_updated', {'id': ticket_id, 'status': 'pending'})
     return jsonify({'success': True, 'ticket_id': ticket_id})
 
 
@@ -1058,6 +989,7 @@ def api_owner_resolve_ticket():
 
     try:
         db_utils.resolve_support_ticket(ticket_id)
+        broadcast_sse_event('ticket_updated', {'id': ticket_id, 'status': 'resolved'})
         return jsonify({'success': True, 'message': 'Ticket marked as resolved.'})
     except Exception as e:
         logger.error(f"Error resolving support ticket: {e}")
@@ -1076,13 +1008,12 @@ def api_session_restore():
         if not owner_username:
             return jsonify({'success': False, 'message': 'Owner username required.'}), 400
         try:
-            with _get_db() as conn:
-                row = conn.execute('SELECT name, email, phone FROM owners WHERE username = ?', (owner_username,)).fetchone()
-                if not row:
-                    return jsonify({'success': False, 'message': 'Owner not found.'}), 404
-                session['is_owner'] = True
-                session['owner_username'] = owner_username
-                return jsonify({'success': True, 'message': 'Owner session restored.'})
+            owner = db_utils.load_owner(owner_username)
+            if not owner:
+                return jsonify({'success': False, 'message': 'Owner not found.'}), 404
+            session['is_owner'] = True
+            session['owner_username'] = owner_username
+            return jsonify({'success': True, 'message': 'Owner session restored.'})
         except Exception as e:
             logger.error(f"Error restoring owner session: {e}")
             return jsonify({'success': False, 'message': 'Database error.'}), 500
